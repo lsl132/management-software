@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('服务异常')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('')}"></header>
+
+<main class="app-main">
+    <section class="panel panel--center">
+        <div class="status-code" th:text="${status} ?: 500">500</div>
+        <h1 class="panel__title">服务开小差了</h1>
+        <p class="panel__desc">
+            服务器处理请求时发生异常，请稍后重试。如问题持续出现，请查看日志文件
+            <code>logs/backend-management-error.log</code>。
+        </p>
+        <p class="panel__desc panel__desc--muted" th:if="${message}" th:text="${message}"></p>
+        <div class="panel__actions">
+            <a class="btn btn--primary" th:href="@{/}">返回首页</a>
+        </div>
+    </section>
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+</body>
+</html>

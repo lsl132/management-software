@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<!--
+  后台公共布局片段（fragments）：
+    head(title)    -> 页面 head
+    header(active) -> 顶部导航 + 当前用户，active 取 home / employees / departments /
+                      users / roles / authorities / announcements / schedules / about
+    footer         -> 页脚
+  用法：<head th:replace="~{fragments/layout :: head('首页')}"></head>
+  注意：调用带参片段必须显式传参，如 header('')，省略参数会导致渲染被静默截断。
+-->
+<head th:fragment="head(title)">
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="|${title} · 逐锐科技后台管理|">逐锐科技后台管理</title>
+    <link rel="icon" type="image/png" sizes="32x32" th:href="@{/img/favicon-32.png}"/>
+    <link rel="icon" type="image/png" sizes="64x64" th:href="@{/img/favicon.png}"/>
+    <link rel="apple-touch-icon" th:href="@{/img/favicon.png}"/>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+
+<header th:fragment="header(active)" class="app-header">
+    <div class="app-header__inner">
+        <a class="brand" th:href="@{/home}">
+            <img class="brand__logo" th:src="@{/img/logo.png}" alt="逐锐科技 logo"/>
+            <span class="brand__text">逐锐科技 · 后台管理</span>
+        </a>
+        <nav class="nav">
+            <a class="nav__link" th:href="@{/home}"
+               th:classappend="${active == 'home' ? 'is-active' : ''}">欢迎页</a>
+            <a class="nav__link" th:href="@{/employees}"
+               th:classappend="${active == 'employees' ? 'is-active' : ''}">员工管理</a>
+            <a class="nav__link" th:href="@{/departments}"
+               th:classappend="${active == 'departments' ? 'is-active' : ''}">部门管理</a>
+            <a class="nav__link" th:href="@{/users}"
+               th:classappend="${active == 'users' ? 'is-active' : ''}">用户管理</a>
+            <a class="nav__link" th:href="@{/roles}"
+               th:classappend="${active == 'roles' ? 'is-active' : ''}">角色管理</a>
+            <a class="nav__link" th:href="@{/authorities}"
+               th:classappend="${active == 'authorities' ? 'is-active' : ''}">权限管理</a>
+            <a class="nav__link" th:href="@{/announcements}"
+               th:classappend="${active == 'announcements' ? 'is-active' : ''}">公告管理</a>
+            <a class="nav__link" th:href="@{/schedules}"
+               th:classappend="${active == 'schedules' ? 'is-active' : ''}">我的日程</a>
+            <a class="nav__link" th:href="@{/about}"
+               th:classappend="${active == 'about' ? 'is-active' : ''}">关于</a>
+        </nav>
+        <div class="app-header__right" th:if="${user != null}">
+            <div class="user-box">
+                <span class="user-box__avatar"
+                      th:text="${#strings.toUpperCase(#strings.substring(user.username, 0, 1))}">A</span>
+                <span class="user-box__meta">
+                    <span class="user-box__name" th:text="${user.username}">admin</span>
+                    <span class="user-box__role"
+                          th:text="${user.roleName != null ? user.roleName : '未分配角色'}">超级管理员</span>
+                </span>
+            </div>
+            <button type="button" class="btn btn--ghost" data-action="logout">退出登录</button>
+        </div>
+    </div>
+</header>
+
+<footer th:fragment="footer" class="app-footer">
+    <div class="app-footer__inner">
+        <span>© <span th:text="${#dates.year(#dates.createNow())}">2026</span> 逐锐科技 · backend-management</span>
+        <span>Spring Boot 3.5.16 · Thymeleaf · 国密 SM2</span>
+    </div>
+</footer>
+
+</body>
+</html>

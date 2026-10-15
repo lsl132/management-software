@@ -1,0 +1,181 @@
+server:
+  port: 10201
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+  shutdown: graceful
+
+spring:
+  application:
+    name: backend-management
+  main:
+    banner-mode: console
+
+  # ==================== 数据库（PostgreSQL 16 + HikariCP） ====================
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    driver-class-name: org.postgresql.Driver
+    # 支持整体覆盖：DB_URL 优先；未设置时由各分项环境变量拼装
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:backend_management}?currentSchema=${DB_SCHEMA:public}&ApplicationName=${spring.application.name}&reWriteBatchedInserts=true}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:12345678}
+    hikari:
+      pool-name: BackendHikariPool
+      # 最小空闲连接
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # 最大连接数
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      # 连接超时（30s）
+      connection-timeout: 30000
+      # 空闲连接存活时间（10min）
+      idle-timeout: 600000
+      # 连接最大存活时间（30min，需小于数据库侧连接回收时间）
+      max-lifetime: 1800000
+      # 连接有效性校验超时
+      validation-timeout: 5000
+      # 泄漏检测（超过 60s 未归还则打印堆栈）
+      leak-detection-threshold: 60000
+      auto-commit: true
+
+  # ==================== 缓存（Redis + Lettuce 连接池） ====================
+  data:
+    redis:
+      client-type: lettuce
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:12345678}
+      database: ${REDIS_DATABASE:0}
+      timeout: 5s
+      connect-timeout: 5s
+      lettuce:
+        shutdown-timeout: 200ms
+        pool:
+          # 连接池最大连接数
+          max-active: ${REDIS_POOL_MAX_ACTIVE:16}
+          # 最大空闲连接
+          max-idle: ${REDIS_POOL_MAX_IDLE:8}
+          # 最小空闲连接
+          min-idle: ${REDIS_POOL_MIN_IDLE:2}
+          # 获取连接最大等待时间
+          max-wait: 3s
+          time-between-eviction-runs: 60s
+
+  # ==================== 序列化（Jackson） ====================
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+  # ==================== 视图层（Thymeleaf 服务端渲染） ====================
+  thymeleaf:
+    enabled: true
+    # 模板根目录：src/main/resources/templates
+    prefix: classpath:/templates/
+    # 模板后缀
+    suffix: .html
+    # 模板模式（HTML / HTML5 / XHTML / XML / TEXT ...）
+    mode: HTML
+    encoding: UTF-8
+    # 启动时校验模板目录是否存在
+    check-template-location: true
+    # 开发环境关闭模板缓存，改完模板刷新即生效；生产环境请设置为 true
+    cache: ${THYMELEAF_CACHE:false}
+    servlet:
+      content-type: text/html
+
+  # 静态资源（src/main/resources/static）
+  web:
+    resources:
+      static-locations: classpath:/static/,classpath:/public/,classpath:/META-INF/resources/
+      cache:
+        # 开发环境不缓存静态资源，生产环境可设置为 1h 等
+        period: ${STATIC_CACHE_PERIOD:0}
+
+  mvc:
+    # Boot 3.2+ 默认即为 true，这里显式声明，未匹配到处理器时抛异常走错误页
+    throw-exception-if-no-handler-found: true
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+# ==================== ORM（mybatis-plus） ====================
+mybatis-plus:
+  # Mapper XML 位置
+  mapper-locations: classpath*:/mapper/**/*.xml
+  # 领域实体包（typeAlias）：聚合根在 domain.aggregate，实体在 domain.aggregate.entity
+  type-aliases-package: com.gangtise.backend.domain
+  configuration:
+    # 下划线转驼峰
+    map-underscore-to-camel-case: true
+    # 关闭二级缓存
+    cache-enabled: false
+    call-setters-on-nulls: true
+    # SQL 日志交给 slf4j（由 logback 统一控制级别）
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      # 主键策略：数据库自增（与建表脚本中的 identity 自增列一致）
+      # 实体上仍显式声明 @TableId(type = IdType.AUTO)，避免配置漂移
+      id-type: auto
+      # 逻辑删除配置：仅当实体上存在同名字段时才生效
+      # 当前业务实体用 status 表达数据状态，如后续需要软删除，
+      # 在实体上补 @TableLogic private Integer deleted 并加列即可
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      table-underline: true
+
+# ==================== 应用自身配置 ====================
+app:
+  # 管理员账号初始化（启动时执行，幂等）
+  admin:
+    enabled: ${ADMIN_INIT_ENABLED:true}
+    username: ${ADMIN_USERNAME:admin}
+    # 仅用于首次初始化，密码以 BCrypt 散列入库，任何位置都不保存明文
+    password: ${ADMIN_PASSWORD:admin123}
+    role-name: ${ADMIN_ROLE_NAME:超级管理员}
+  # 系统用户（"user" + user_account）
+  user:
+    # 新用户与「重置密码」后的统一初始密码；BCrypt 散列入库，接口与页面都不下发该明文。
+    # 生产环境务必通过环境变量 USER_DEFAULT_PASSWORD 覆盖，并提醒用户首次登录后修改。
+    default-password: ${USER_DEFAULT_PASSWORD:Init@123456}
+  security:
+    # 登录密码传输加密（国密 SM2）：一次性密钥对，私钥暂存 Redis
+    sm2:
+      # 密钥（私钥）有效期，超过后必须重新取公钥
+      key-ttl: ${SM2_KEY_TTL:5m}
+
+# ==================== 日志 ====================
+logging:
+  config: classpath:logback-spring.xml
+  level:
+    root: INFO
+    com.gangtise.backend: INFO
+  file:
+    path: ${LOG_PATH:./logs}
+
+---
+# ==================== Redis 集群模式（按需启用：--spring.profiles.active=cluster） ====================
+spring:
+  config:
+    activate:
+      on-profile: cluster
+  data:
+    redis:
+      # 集群模式下 host/port 不生效，改由下方 nodes 指定
+      cluster:
+        nodes: ${REDIS_CLUSTER_NODES:127.0.0.1:6379}
+        max-redirects: 3
+      lettuce:
+        pool:
+          max-active: ${REDIS_POOL_MAX_ACTIVE:32}
+          max-idle: ${REDIS_POOL_MAX_IDLE:16}
+          min-idle: ${REDIS_POOL_MIN_IDLE:4}
+          max-wait: 3s

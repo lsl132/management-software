@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>登录 · 逐锐科技后台管理</title>
+    <link rel="icon" type="image/png" sizes="32x32" th:href="@{/img/favicon-32.png}"/>
+    <link rel="icon" type="image/png" sizes="64x64" th:href="@{/img/favicon.png}"/>
+    <link rel="apple-touch-icon" th:href="@{/img/favicon.png}"/>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body>
+
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-card__brand">
+            <img class="login-card__logo" th:src="@{/img/logo.png}" alt="逐锐科技 logo"/>
+            <div>
+                <h1 class="login-card__title">逐锐科技 · 后台管理</h1>
+                <p class="login-card__subtitle">欢迎登录，请使用管理员账号</p>
+            </div>
+        </div>
+
+        <div class="form-error" id="loginError"></div>
+
+        <!-- 表单仅用于语义与回车提交，提交行为由 login.js 拦截并走 ajax -->
+        <form class="login-form" id="loginForm" autocomplete="off" novalidate>
+            <label class="field" for="username">
+                <span class="field__label field__label--required">登录账号</span>
+                <input class="field__input" type="text" id="username" name="username"
+                       placeholder="请输入登录账号" autocomplete="username" maxlength="64"/>
+            </label>
+            <label class="field" for="password">
+                <span class="field__label field__label--required">登录密码</span>
+                <input class="field__input" type="password" id="password" name="password"
+                       placeholder="请输入登录密码" autocomplete="current-password" maxlength="128"/>
+            </label>
+            <label class="checkbox login-form__remember" for="rememberMe">
+                <input type="checkbox" id="rememberMe" name="rememberMe"/>
+                <span>记住登录账号</span>
+            </label>
+            <button class="btn btn--primary login-form__submit" type="submit" id="loginSubmit">登 录</button>
+        </form>
+    </div>
+</div>
+
+<script th:src="@{/js/sm2.js}"></script>
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/login.js}"></script>
+
+</body>
+</html>

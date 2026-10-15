@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('员工管理')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('employees')}"></header>
+
+<main class="app-main">
+
+    <section class="panel">
+        <h1 class="panel__title">员工管理</h1>
+        <p class="panel__desc">列表查询、新增、修改、删除均通过 ajax 提交，页面不整页刷新，结果以轻提示反馈。</p>
+
+        <div class="toolbar">
+            <input class="field__input" id="keyword" type="text" style="width: 240px"
+                   placeholder="姓名 / 工号 / 电话 / 邮箱" autocomplete="off"/>
+            <select class="field__select" id="filterDepartment">
+                <option value="">全部部门</option>
+                <option th:each="item : ${departments}" th:value="${item.value}" th:text="${item.label}"></option>
+            </select>
+            <select class="field__select" id="filterStatus">
+                <option value="">全部状态</option>
+                <option th:each="item : ${employeeStatuses}" th:value="${item.value}" th:text="${item.label}"></option>
+            </select>
+            <button type="button" class="btn btn--primary" id="btnSearch">查询</button>
+            <button type="button" class="btn" id="btnReset">重置</button>
+            <span class="toolbar__spacer"></span>
+            <button type="button" class="btn btn--primary" id="btnCreate">新增员工</button>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>工号</th>
+                    <th>姓名</th>
+                    <th>性别</th>
+                    <th>电话</th>
+                    <th>邮箱</th>
+                    <th>部门</th>
+                    <th>职级</th>
+                    <th>学历</th>
+                    <th>状态</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody id="employeeBody">
+                <tr>
+                    <td colspan="11" class="table__empty">正在加载…</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pager">
+            <span id="pagerInfo">共 0 条</span>
+            <div class="pager__actions">
+                <label>每页
+                    <select class="field__select" id="pageSize" style="height: 32px">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                </label>
+                <button type="button" class="btn btn--sm" id="btnPrev">上一页</button>
+                <span id="pageNow">1 / 1</span>
+                <button type="button" class="btn btn--sm" id="btnNext">下一页</button>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<div class="modal" id="employeeModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel">
+        <div class="modal__header">
+            <h2 class="modal__title" id="modalTitle">新增员工</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <form id="employeeForm" autocomplete="off" novalidate>
+            <div class="modal__body">
+                <div class="form-error" id="formError"></div>
+                <div class="form-grid">
+                    <label class="field" for="workNo">
+                        <span class="field__label field__label--required">员工工号</span>
+                        <input class="field__input" type="text" id="workNo" maxlength="32"/>
+                    </label>
+                    <label class="field" for="name">
+                        <span class="field__label field__label--required">员工姓名</span>
+                        <input class="field__input" type="text" id="name" maxlength="64"/>
+                    </label>
+                    <label class="field" for="alias">
+                        <span class="field__label">别名</span>
+                        <input class="field__input" type="text" id="alias" maxlength="64"/>
+                    </label>
+                    <label class="field" for="gender">
+                        <span class="field__label">性别</span>
+                        <select class="field__select" id="gender">
+                            <option th:each="item : ${genders}" th:value="${item.value}" th:text="${item.label}"></option>
+                        </select>
+                    </label>
+                    <label class="field" for="identityCard">
+                        <span class="field__label">身份证号</span>
+                        <input class="field__input" type="text" id="identityCard" maxlength="32"/>
+                    </label>
+                    <label class="field" for="telephone">
+                        <span class="field__label">电话号码</span>
+                        <input class="field__input" type="text" id="telephone" maxlength="32"/>
+                    </label>
+                    <label class="field" for="email">
+                        <span class="field__label">电子邮箱</span>
+                        <input class="field__input" type="text" id="email" maxlength="128"/>
+                    </label>
+                    <label class="field" for="birthday">
+                        <span class="field__label">生日</span>
+                        <input class="field__input" type="date" id="birthday"/>
+                    </label>
+                    <label class="field" for="education">
+                        <span class="field__label">学历</span>
+                        <select class="field__select" id="education">
+                            <option value="">未选择</option>
+                            <option th:each="item : ${educations}" th:value="${item.value}" th:text="${item.label}"></option>
+                        </select>
+                    </label>
+                    <label class="field" for="department">
+                        <span class="field__label">所属部门</span>
+                        <select class="field__select" id="department">
+                            <option value="">未选择</option>
+                            <option th:each="item : ${departments}" th:value="${item.value}" th:text="${item.label}"></option>
+                        </select>
+                    </label>
+                    <!-- 职级归属部门：选项随「所属部门」ajax 动态加载，未选部门时禁用 -->
+                    <label class="field" for="rank">
+                        <span class="field__label">职级
+                            <span class="field__hint">职级归属部门，请先选择部门</span>
+                        </span>
+                        <select class="field__select" id="rank" disabled>
+                            <option value="">请先选择所属部门</option>
+                        </select>
+                    </label>
+                    <label class="field" for="status">
+                        <span class="field__label">状态</span>
+                        <select class="field__select" id="status">
+                            <option th:each="item : ${employeeStatuses}" th:value="${item.value}" th:text="${item.label}"></option>
+                        </select>
+                    </label>
+                    <label class="field form-grid__item--full" for="address">
+                        <span class="field__label">居住地址</span>
+                        <textarea class="field__input" id="address" maxlength="255" rows="2"></textarea>
+                    </label>
+                </div>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn" data-close="1">取消</button>
+                <button type="submit" class="btn btn--primary" id="btnSubmit">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/employees.js}"></script>
+
+</body>
+</html>

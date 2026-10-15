@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('关于')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('about')}"></header>
+
+<main class="app-main">
+
+    <section class="panel">
+        <h1 class="panel__title">运行信息</h1>
+        <p class="panel__desc">以下数据由 <code>interfaces/web</code> 下的页面控制器注入模型后渲染。</p>
+
+        <table class="info-table">
+            <tbody>
+            <tr>
+                <th>应用名称</th>
+                <td th:text="${appName}">backend-management</td>
+            </tr>
+            <tr>
+                <th>激活 Profile</th>
+                <td th:text="${profiles}">default</td>
+            </tr>
+            <tr>
+                <th>JDK 版本</th>
+                <td th:text="${javaVersion}">17.0.4</td>
+            </tr>
+            <tr>
+                <th>操作系统</th>
+                <td th:text="${osName}">macOS</td>
+            </tr>
+            <tr>
+                <th>服务端口</th>
+                <td th:text="${serverPort}">10201</td>
+            </tr>
+            <tr>
+                <th>服务器时间</th>
+                <td th:text="${#temporals.format(serverTime, 'yyyy-MM-dd HH:mm:ss')}">2026-10-10 17:00:00</td>
+            </tr>
+            <tr>
+                <th>模板缓存</th>
+                <td th:text="${thymeleafCache} ? '已开启' : '已关闭（开发模式）'">已关闭（开发模式）</td>
+            </tr>
+            </tbody>
+        </table>
+
+        <div class="panel__actions">
+            <a class="btn" th:href="@{/home}">返回欢迎页</a>
+            <a class="btn" th:href="@{/employees}">员工管理</a>
+        </div>
+    </section>
+
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+</body>
+</html>

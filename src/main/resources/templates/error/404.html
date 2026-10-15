@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('页面不存在')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('')}"></header>
+
+<main class="app-main">
+    <section class="panel panel--center">
+        <div class="status-code" th:text="${status} ?: 404">404</div>
+        <h1 class="panel__title">页面不存在</h1>
+        <p class="panel__desc">
+            请求的地址 <code th:text="${path} ?: '/'">/</code> 没有找到对应的页面。
+        </p>
+        <div class="panel__actions">
+            <a class="btn btn--primary" th:href="@{/}">返回首页</a>
+        </div>
+    </section>
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+</body>
+</html>

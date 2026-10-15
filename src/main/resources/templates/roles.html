@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('角色管理')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('roles')}"></header>
+
+<main class="app-main">
+
+    <section class="panel">
+        <h1 class="panel__title">角色管理</h1>
+        <p class="panel__desc">
+            角色是权限的载体：把权限挂到角色上，再把角色分配给用户。
+            权限为两级结构（模块分组 → 功能页），勾选模块分组会自动全选其下的功能页，
+            取消全部功能页会自动取消分组。已被用户引用的角色不允许删除。
+            权限字典本身在「权限管理」中维护。
+        </p>
+
+        <div class="toolbar">
+            <input class="field__input" id="keyword" type="text" style="width: 220px"
+                   placeholder="角色名称" autocomplete="off"/>
+            <button type="button" class="btn btn--primary" id="btnSearch">查询</button>
+            <button type="button" class="btn" id="btnReset">重置</button>
+            <span class="toolbar__spacer"></span>
+            <button type="button" class="btn btn--primary" id="btnCreate">新增角色</button>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>角色名称</th>
+                    <th>备注说明</th>
+                    <th>状态</th>
+                    <th>用户数</th>
+                    <th>权限数</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody id="roleBody">
+                <tr>
+                    <td colspan="8" class="table__empty">正在加载…</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="panel__desc panel__desc--muted" id="listSummary"></p>
+    </section>
+
+</main>
+
+<!-- 角色表单弹窗 -->
+<div class="modal" id="roleModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel">
+        <div class="modal__header">
+            <h2 class="modal__title" id="roleModalTitle">新增角色</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <form id="roleForm" autocomplete="off" novalidate>
+            <div class="modal__body">
+                <div class="form-error" id="roleError"></div>
+                <div class="form-grid">
+                    <label class="field" for="name">
+                        <span class="field__label field__label--required">角色名称
+                            <span class="field__hint">全公司唯一</span>
+                        </span>
+                        <input class="field__input" type="text" id="name" maxlength="64"/>
+                    </label>
+                    <label class="field" for="status">
+                        <span class="field__label field__label--required">状态</span>
+                        <select class="field__select" id="status">
+                            <option th:each="item : ${roleStatuses}" th:value="${item.value}"
+                                    th:text="${item.label}"></option>
+                        </select>
+                    </label>
+                    <label class="field form-grid__item--full" for="description">
+                        <span class="field__label">备注说明</span>
+                        <textarea class="field__input" id="description" maxlength="255" rows="2"></textarea>
+                    </label>
+                </div>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn" data-close="1">取消</button>
+                <button type="submit" class="btn btn--primary" id="btnSubmitRole">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 权限挂载弹窗 -->
+<div class="modal" id="permModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel modal__panel--wide">
+        <div class="modal__header">
+            <h2 class="modal__title" id="permModalTitle">挂载权限</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <div class="modal__body">
+            <div class="form-error" id="permError"></div>
+
+            <div class="toolbar">
+                <span class="perm-hint" id="permHint">正在加载权限树…</span>
+                <span class="toolbar__spacer"></span>
+                <button type="button" class="btn btn--sm" id="btnCheckAll">全选</button>
+                <button type="button" class="btn btn--sm" id="btnClearAll">清空</button>
+            </div>
+
+            <div class="auth-tree" id="authTree"></div>
+        </div>
+        <div class="modal__footer">
+            <button type="button" class="btn" data-close="1">取消</button>
+            <button type="button" class="btn btn--primary" id="btnSavePerm">保存权限</button>
+        </div>
+    </div>
+</div>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/roles.js}"></script>
+
+</body>
+</html>

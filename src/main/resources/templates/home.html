@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('个人工作台')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('home')}"></header>
+
+<main class="app-main">
+
+    <section class="hero hero--compact">
+        <p class="hero__eyebrow">Welcome</p>
+        <h1 class="hero__title"
+            th:text="'欢迎回来，' + (${user != null} ? ${user.username} : '-')">欢迎回来，admin</h1>
+        <p class="hero__desc">这里只展示与你相关的信息：登录记录、日程安排，以及公司发布的公告。</p>
+
+        <div class="hero__meta">
+            <span>当前角色：<strong
+                    th:text="${user != null and user.roleName != null} ? ${user.roleName} : '未分配角色'">超级管理员</strong></span>
+            <span>今天：<strong th:text="${#temporals.format(today, 'yyyy-MM-dd')}">2026-10-14</strong></span>
+            <span>上次登录：<strong id="lastLoginTime">—</strong></span>
+            <span>登录IP：<strong id="lastLoginIp">—</strong></span>
+        </div>
+
+        <div class="hero__actions">
+            <a class="btn btn--primary" th:href="@{/schedules}">我的日程</a>
+            <a class="btn" th:href="@{/announcements}">公告管理</a>
+            <a class="btn" th:href="@{/employees}">员工管理</a>
+        </div>
+    </section>
+
+    <!-- 我的登录记录：近 10 天折线图 -->
+    <section class="panel dash-block">
+        <div class="dash-panel__head">
+            <h2 class="dash-panel__title">我的登录记录</h2>
+            <span class="dash-panel__hint" id="trendHint">近 10 天</span>
+        </div>
+        <div class="chart" id="loginTrend">
+            <p class="empty-hint">正在加载…</p>
+        </div>
+        <p class="panel__desc panel__desc--muted" id="trendSummary"></p>
+    </section>
+
+    <div class="dash-grid">
+
+        <!-- 日历：带日程标点 -->
+        <section class="panel dash-panel">
+            <div class="dash-panel__head">
+                <h2 class="dash-panel__title">我的日历</h2>
+                <span class="dash-panel__hint">圆点表示当天有日程</span>
+            </div>
+            <div class="calendar" id="calendar"></div>
+            <div class="day-schedules">
+                <h3 class="day-schedules__title" id="dayTitle">今天的安排</h3>
+                <div id="dayList"><p class="empty-hint">正在加载…</p></div>
+            </div>
+        </section>
+
+        <!-- 发布的公告：近 5 条，发布时间倒序 -->
+        <section class="panel dash-panel">
+            <div class="dash-panel__head">
+                <h2 class="dash-panel__title">发布的公告</h2>
+                <a class="dash-panel__hint" th:href="@{/announcements}">全部公告 →</a>
+            </div>
+            <ul class="ann-list" id="announcementList">
+                <li class="empty-hint">正在加载…</li>
+            </ul>
+        </section>
+
+    </div>
+
+</main>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/home.js}"></script>
+
+</body>
+</html>

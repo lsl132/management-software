@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('公告管理')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('announcements')}"></header>
+
+<main class="app-main">
+
+    <section class="panel">
+        <h1 class="panel__title">公告管理</h1>
+        <p class="panel__desc">
+            公告支持草稿、发布、下线三种状态。作者取当前登录账号自动写入，发布时间在首次发布时确定，之后不再变更。
+        </p>
+
+        <div class="toolbar">
+            <input class="field__input" id="keyword" type="text" style="width: 240px"
+                   placeholder="公告标题" autocomplete="off"/>
+            <select class="field__select" id="filterStatus">
+                <option value="">全部状态</option>
+                <option th:each="item : ${announcementStatuses}" th:value="${item.value}" th:text="${item.label}"></option>
+            </select>
+            <button type="button" class="btn btn--primary" id="btnSearch">查询</button>
+            <button type="button" class="btn" id="btnReset">重置</button>
+            <span class="toolbar__spacer"></span>
+            <button type="button" class="btn btn--primary" id="btnCreate">新建公告</button>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>标题</th>
+                    <th>状态</th>
+                    <th>作者</th>
+                    <th>发布时间</th>
+                    <th>附件</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody id="announcementBody">
+                <tr>
+                    <td colspan="8" class="table__empty">正在加载…</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pager">
+            <span id="pagerInfo">共 0 条</span>
+            <div class="pager__actions">
+                <label>每页
+                    <select class="field__select" id="pageSize" style="height: 32px">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                </label>
+                <button type="button" class="btn btn--sm" id="btnPrev">上一页</button>
+                <span id="pageNow">1 / 1</span>
+                <button type="button" class="btn btn--sm" id="btnNext">下一页</button>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<!-- 公告表单弹窗 -->
+<div class="modal" id="announcementModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel modal__panel--wide">
+        <div class="modal__header">
+            <h2 class="modal__title" id="announcementModalTitle">新建公告</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <form id="announcementForm" autocomplete="off" novalidate>
+            <div class="modal__body">
+                <div class="form-error" id="announcementError"></div>
+                <div class="form-grid">
+                    <label class="field form-grid__item--full" for="title">
+                        <span class="field__label field__label--required">标题</span>
+                        <input class="field__input" type="text" id="title" maxlength="200"/>
+                    </label>
+                    <label class="field form-grid__item--full" for="content">
+                        <span class="field__label field__label--required">内容</span>
+                        <textarea class="field__input ann-form__content" id="content" maxlength="20000"
+                                  rows="9" placeholder="公告正文"></textarea>
+                    </label>
+                    <label class="field form-grid__item--full" for="attachment">
+                        <span class="field__label">附件
+                            <span class="field__hint">填文件路径或 URL，留空表示无附件</span>
+                        </span>
+                        <input class="field__input" type="text" id="attachment" maxlength="255"
+                               placeholder="如 /files/announcement/2026-q3.pdf"/>
+                    </label>
+                </div>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn" data-close="1">取消</button>
+                <button type="submit" class="btn" id="btnSaveDraft" data-status="1" hidden>保存草稿</button>
+                <button type="submit" class="btn btn--primary" id="btnSavePublish" data-status="2" hidden>保存并发布</button>
+                <button type="submit" class="btn btn--primary" id="btnSaveEdit" hidden>保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 公告详情弹窗（只读，标题或「详情」按钮打开） -->
+<div class="modal" id="announcementDetailModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel modal__panel--wide">
+        <div class="modal__header">
+            <h2 class="modal__title" id="announcementDetailTitle">公告详情</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <div class="modal__body">
+            <div class="ann-detail__meta" id="announcementDetailMeta"></div>
+            <div class="ann-detail__label">正文</div>
+            <div class="ann-detail__content" id="announcementDetailContent"></div>
+            <div class="ann-detail__label ann-detail__label--attachment">附件</div>
+            <div class="ann-detail__attachment" id="announcementDetailAttachment"></div>
+        </div>
+        <div class="modal__footer">
+            <button type="button" class="btn btn--primary" data-close="1">关闭</button>
+        </div>
+    </div>
+</div>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/announcements.js}"></script>
+
+</body>
+</html>

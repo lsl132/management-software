@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('我的日程')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('schedules')}"></header>
+
+<main class="app-main">
+
+    <section class="panel">
+        <h1 class="panel__title">我的日程</h1>
+        <p class="panel__desc">
+            日程归属于当前登录账号，其他人看不到也改不了。月历上的圆点表示当天有日程，点击某一天可以只看当天的安排。
+        </p>
+
+        <div class="toolbar">
+            <input class="field__input" id="month" type="month" style="width: 160px"/>
+            <input class="field__input" id="keyword" type="text" style="width: 200px"
+                   placeholder="日程标题" autocomplete="off"/>
+            <button type="button" class="btn btn--primary" id="btnSearch">查询</button>
+            <button type="button" class="btn" id="btnReset">重置</button>
+            <span class="toolbar__spacer"></span>
+            <button type="button" class="btn btn--primary" id="btnCreate">新建日程</button>
+        </div>
+
+        <div class="calendar" id="calendar"></div>
+
+        <div class="day-schedules">
+            <h2 class="day-schedules__title" id="listTitle">本月日程</h2>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>预约时间</th>
+                        <th>提醒时间</th>
+                        <th>标题</th>
+                        <th>简介</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="scheduleBody">
+                    <tr>
+                        <td colspan="7" class="table__empty">正在加载…</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="panel__desc panel__desc--muted" id="listSummary"></p>
+        </div>
+    </section>
+
+</main>
+
+<!-- 日程表单弹窗 -->
+<div class="modal" id="scheduleModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel">
+        <div class="modal__header">
+            <h2 class="modal__title" id="scheduleModalTitle">新建日程</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <form id="scheduleForm" autocomplete="off" novalidate>
+            <div class="modal__body">
+                <div class="form-error" id="scheduleError"></div>
+                <div class="form-grid">
+                    <label class="field" for="scheduleTime">
+                        <span class="field__label field__label--required">预约时间</span>
+                        <input class="field__input" type="datetime-local" id="scheduleTime"/>
+                    </label>
+                    <label class="field" for="remindOffset">
+                        <span class="field__label">提醒时间</span>
+                        <select class="field__select" id="remindOffset">
+                            <option value="0">开始时</option>
+                            <option value="5">前5分钟</option>
+                            <option value="10">前10分钟</option>
+                            <option value="15">前15分钟</option>
+                            <option value="30">前30分钟</option>
+                        </select>
+                        <span class="field__hint" id="remindPreview">选择提前量后按预约时间自动计算</span>
+                    </label>
+                    <label class="field form-grid__item--full" for="title">
+                        <span class="field__label field__label--required">标题</span>
+                        <input class="field__input" type="text" id="title" maxlength="128"/>
+                    </label>
+                    <label class="field form-grid__item--full" for="intro">
+                        <span class="field__label">简介</span>
+                        <textarea class="field__input" id="intro" maxlength="255" rows="3"></textarea>
+                    </label>
+                </div>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn" data-close="1">取消</button>
+                <button type="submit" class="btn btn--primary" id="btnSubmitSchedule">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/schedules.js}"></script>
+
+</body>
+</html>

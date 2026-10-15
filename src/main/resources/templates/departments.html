@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('部门管理')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('departments')}"></header>
+
+<main class="app-main">
+
+    <section class="panel">
+        <h1 class="panel__title">部门管理</h1>
+        <p class="panel__desc">维护组织部门与其下属职级。职级隶属于部门，需先在列表中选定部门，再维护该部门的职级。</p>
+
+        <div class="toolbar">
+            <input class="field__input" id="keyword" type="text" style="width: 240px"
+                   placeholder="部门名称" autocomplete="off"/>
+            <button type="button" class="btn btn--primary" id="btnSearch">查询</button>
+            <button type="button" class="btn" id="btnReset">重置</button>
+            <span class="toolbar__spacer"></span>
+            <button type="button" class="btn btn--primary" id="btnCreate">新增部门</button>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>部门名称</th>
+                    <th>上级部门</th>
+                    <th>部门简介</th>
+                    <th>职级数</th>
+                    <th>员工数</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody id="departmentBody">
+                <tr>
+                    <td colspan="8" class="table__empty">正在加载…</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="panel__desc panel__desc--muted" id="listSummary"></p>
+    </section>
+
+</main>
+
+<!-- 部门表单弹窗 -->
+<div class="modal" id="departmentModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel">
+        <div class="modal__header">
+            <h2 class="modal__title" id="departmentModalTitle">新增部门</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <form id="departmentForm" autocomplete="off" novalidate>
+            <div class="modal__body">
+                <div class="form-error" id="departmentError"></div>
+                <div class="form-grid">
+                    <label class="field" for="departName">
+                        <span class="field__label field__label--required">部门名称</span>
+                        <input class="field__input" type="text" id="departName" maxlength="64"/>
+                    </label>
+                    <label class="field" for="parentId">
+                        <span class="field__label">上级部门</span>
+                        <select class="field__select" id="parentId">
+                            <option value="">无（顶级部门）</option>
+                            <option th:each="item : ${departments}" th:value="${item.value}" th:text="${item.label}"></option>
+                        </select>
+                    </label>
+                    <label class="field form-grid__item--full" for="description">
+                        <span class="field__label">部门简介</span>
+                        <textarea class="field__input" id="description" maxlength="255" rows="2"></textarea>
+                    </label>
+                </div>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn" data-close="1">取消</button>
+                <button type="submit" class="btn btn--primary" id="btnSubmitDepartment">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 部门职级弹窗 -->
+<div class="modal" id="rankModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel modal__panel--wide">
+        <div class="modal__header">
+            <h2 class="modal__title" id="rankModalTitle">职级管理</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <div class="modal__body">
+            <div class="form-error" id="rankError"></div>
+
+            <form class="rank-form" id="rankForm" autocomplete="off" novalidate>
+                <label class="field" for="rankCode">
+                    <span class="field__label field__label--required">职级编码</span>
+                    <input class="field__input" type="text" id="rankCode" maxlength="32" placeholder="如 O1"/>
+                </label>
+                <label class="field" for="rankType">
+                    <span class="field__label field__label--required">职级序列</span>
+                    <select class="field__select" id="rankType">
+                        <option th:each="item : ${rankTypes}" th:value="${item.value}" th:text="${item.label}"></option>
+                    </select>
+                </label>
+                <label class="field" for="rankIntro">
+                    <span class="field__label">职级说明</span>
+                    <input class="field__input" type="text" id="rankIntro" maxlength="255" placeholder="如 中级工"/>
+                </label>
+                <div class="rank-form__actions">
+                    <button type="button" class="btn" id="btnCancelRankEdit" hidden>取消</button>
+                    <button type="submit" class="btn btn--primary" id="btnSubmitRank">添加职级</button>
+                </div>
+            </form>
+
+            <div class="table-wrap rank-table-wrap">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>职级编码</th>
+                        <th>职级序列</th>
+                        <th>职级说明</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="rankBody">
+                    <tr>
+                        <td colspan="5" class="table__empty">正在加载…</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal__footer">
+            <button type="button" class="btn" data-close="1">关闭</button>
+        </div>
+    </div>
+</div>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/departments.js}"></script>
+
+</body>
+</html>

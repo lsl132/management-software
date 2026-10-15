@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('用户管理')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('users')}"></header>
+
+<main class="app-main" th:attr="data-current-user-id=${user != null ? user.userId : ''}">
+
+    <section class="panel">
+        <h1 class="panel__title">用户管理</h1>
+        <p class="panel__desc">
+            系统账号的增删改查入口。登录使用「登录标识」（唯一），展示名可随时改成中文姓名、不影响登录。
+            新用户与重置后的密码统一为系统初始密码（由部署配置 <code>app.user.default-password</code> 决定），
+            页面与接口都不下发该明文。账号停用请用「冻结」——不做物理删除，以保留登录审计留痕；
+            冻结自下次登录起生效。
+        </p>
+
+        <div class="toolbar">
+            <input class="field__input" id="keyword" type="text" style="width: 220px"
+                   placeholder="展示名 / 登录标识 / 手机号 / 邮箱" autocomplete="off"/>
+            <select class="field__select" id="filterRole">
+                <option value="">全部角色</option>
+                <option th:each="item : ${roles}" th:value="${item.value}" th:text="${item.label}"></option>
+            </select>
+            <select class="field__select" id="filterStatus">
+                <option value="">全部状态</option>
+                <option th:each="item : ${userStatuses}" th:value="${item.value}" th:text="${item.label}"></option>
+            </select>
+            <button type="button" class="btn btn--primary" id="btnSearch">查询</button>
+            <button type="button" class="btn" id="btnReset">重置</button>
+            <span class="toolbar__spacer"></span>
+            <button type="button" class="btn btn--primary" id="btnCreate">新增用户</button>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>展示名</th>
+                    <th>登录标识</th>
+                    <th>手机号</th>
+                    <th>邮箱</th>
+                    <th>角色</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody id="userBody">
+                <tr>
+                    <td colspan="9" class="table__empty">正在加载…</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pager">
+            <span id="pagerInfo">共 0 条</span>
+            <div class="pager__actions">
+                <label>每页
+                    <select class="field__select" id="pageSize" style="height: 32px">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                </label>
+                <button type="button" class="btn btn--sm" id="btnPrev">上一页</button>
+                <span id="pageNow">1 / 1</span>
+                <button type="button" class="btn btn--sm" id="btnNext">下一页</button>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<!-- 用户表单弹窗 -->
+<div class="modal" id="userModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel modal__panel--wide">
+        <div class="modal__header">
+            <h2 class="modal__title" id="userModalTitle">新增用户</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <form id="userForm" autocomplete="off" novalidate>
+            <div class="modal__body">
+                <div class="form-error" id="userError"></div>
+                <div class="form-grid">
+                    <label class="field" for="username">
+                        <span class="field__label field__label--required">展示名
+                            <span class="field__hint">如「张三」，可随时修改</span>
+                        </span>
+                        <input class="field__input" type="text" id="username" maxlength="64"/>
+                    </label>
+                    <label class="field" for="identifier">
+                        <span class="field__label field__label--required">登录标识
+                            <span class="field__hint">登录时填写的名字，全公司唯一</span>
+                        </span>
+                        <input class="field__input" type="text" id="identifier" maxlength="128"
+                               autocomplete="off"/>
+                    </label>
+                    <label class="field" for="mobile">
+                        <span class="field__label">手机号</span>
+                        <input class="field__input" type="text" id="mobile" maxlength="32"
+                               autocomplete="off"/>
+                    </label>
+                    <label class="field" for="email">
+                        <span class="field__label">邮箱</span>
+                        <input class="field__input" type="text" id="email" maxlength="128"
+                               autocomplete="off"/>
+                    </label>
+                    <label class="field" for="roleId">
+                        <span class="field__label">角色
+                            <span class="field__hint">决定该用户挂载的权限</span>
+                        </span>
+                        <select class="field__select" id="roleId">
+                            <option value="">未分配角色</option>
+                        </select>
+                    </label>
+                    <label class="field" for="status">
+                        <span class="field__label field__label--required">状态</span>
+                        <select class="field__select" id="status">
+                            <option th:each="item : ${userStatuses}" th:value="${item.value}"
+                                    th:text="${item.label}"></option>
+                        </select>
+                    </label>
+                    <p class="field form-grid__item--full panel__desc panel__desc--muted" id="passwordNotice">
+                        密码不由这里设置：新用户与重置后的密码统一为系统初始密码，请提醒用户首次登录后尽快修改。
+                    </p>
+                </div>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn" data-close="1">取消</button>
+                <button type="submit" class="btn btn--primary" id="btnSubmitUser">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 设置角色弹窗 -->
+<div class="modal" id="assignModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel">
+        <div class="modal__header">
+            <h2 class="modal__title" id="assignModalTitle">设置角色</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <form id="assignForm" autocomplete="off" novalidate>
+            <div class="modal__body">
+                <div class="form-error" id="assignError"></div>
+                <div class="form-grid">
+                    <label class="field form-grid__item--full" for="assignRoleId">
+                        <span class="field__label">角色
+                            <span class="field__hint">选择「未分配角色」可解除绑定</span>
+                        </span>
+                        <select class="field__select" id="assignRoleId">
+                            <option value="">未分配角色</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn" data-close="1">取消</button>
+                <button type="submit" class="btn btn--primary" id="btnSubmitAssign">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/users.js}"></script>
+
+</body>
+</html>
