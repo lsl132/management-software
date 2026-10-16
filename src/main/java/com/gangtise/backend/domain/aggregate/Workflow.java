@@ -21,6 +21,7 @@ public class Workflow  implements Serializable {
     //图标
     private String icon;
     //名称
+    @TableField(value = "workflow_name", updateStrategy = FieldStrategy.ALWAYS)
     private String workflowName;
     //描述说明
     private String description;

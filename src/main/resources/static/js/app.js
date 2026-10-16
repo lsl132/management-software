@@ -81,6 +81,43 @@
         return value === null || value === undefined || value === '' ? '—' : escapeHtml(value);
     }
 
+    /** 还原常见 HTML 实体；&amp; 放最后，避免把 &amp;lt; 二次解码成 <。 */
+    function decodeEntities(text) {
+        return text
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#0?39;/g, "'")
+            .replace(/&apos;/g, "'")
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&');
+    }
+
+    /**
+     * 富文本转纯文本，供列表摘要这类只需文字的场景使用。
+     *
+     * <p>步骤：先整段丢弃 script / style，再把块级标签收尾换成换行，最后去掉其余标签并还原实体。
+     * <p>注意：返回值**未经转义**，插入 DOM 前必须自己 escapeHtml，切勿直接 innerHTML——
+     * 本函数的职责是「取文字」，不是「净化 HTML」。
+     */
+    function htmlToText(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        var text = String(value);
+        if (text.indexOf('<') === -1) {
+            return text;
+        }
+        text = text.replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ');
+        text = text.replace(/<br\s*\/?>/gi, '\n');
+        text = text.replace(/<\/(p|div|li|h[1-6]|blockquote|tr|section|article)\s*>/gi, '\n');
+        text = text.replace(/<[^>]*>/g, '');
+        return decodeEntities(text)
+            .replace(/[ \t]*\n[ \t]*/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
     /** yyyy-MM-dd HH:mm:ss -> 原样返回；ISO 字符串做一次美化。 */
     function formatDateTime(value) {
         if (!value) {
@@ -334,6 +371,7 @@
         toast: toast,
         escapeHtml: escapeHtml,
         dash: dash,
+        htmlToText: htmlToText,
         formatDateTime: formatDateTime,
         toDateInputValue: toDateInputValue,
         toCompactDateValue: toCompactDateValue,

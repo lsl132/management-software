@@ -1,7 +1,9 @@
 package com.gangtise.backend.domain.aggregate.entity;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
@@ -18,9 +20,10 @@ public class WorkOrderActivity implements Serializable {
 
     private static final long serialVersionUID = 1L;
     //自增id
+    @TableId(value = "id", type = IdType.AUTO)
     private Long id;
-    //工单ID
-    private Integer workOrderId;
+    //工单ID（关联 work_order.id，后者为 bigint，此处必须用 Long 保持类型一致）
+    private Long workOrderId;
     //WorkflowNode 关联id
     private Integer nodeId;
     //workflowNode 快照数据

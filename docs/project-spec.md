@@ -212,6 +212,12 @@
 | `app.admin.password` | admin123 | `ADMIN_PASSWORD` | 仅用于首次初始化，以 BCrypt 入库，生产环境必须覆盖 |
 | `app.admin.role-name` | 超级管理员 | `ADMIN_ROLE_NAME` | 管理员角色名，不存在时自动创建 |
 | `app.security.sm2.key-ttl` | 5m | `SM2_KEY_TTL` | SM2 私钥在 Redis 中的有效期 |
+| `app.attendance.enabled` | true | `ATTENDANCE_ENABLED` | 考勤统计定时任务开关，关闭后只记日志不写库 |
+| `app.attendance.work-start` | 09:00 | `ATTENDANCE_WORK_START` | 上班时间，最早打卡晚于它记迟到（见 §12.17） |
+| `app.attendance.work-end` | 18:00 | `ATTENDANCE_WORK_END` | 下班时间，最晚打卡早于它记早退，晚于它的部分算加班 |
+| `app.attendance.zone` | Asia/Shanghai | `ATTENDANCE_ZONE` | 判定打卡归属哪一天的时区，**不要用 JVM 默认值**（容器多为 UTC） |
+| `app.attendance.statistics-cron` | `0 0 8 * * ?` | `ATTENDANCE_STATISTICS_CRON` | 考勤统计任务执行时间，默认每天 08:00 汇总前一天 |
+| `app.attendance.allowed-networks` | `127.0.0.1/32,::1/128` | `ATTENDANCE_ALLOWED_NETWORKS` | 允许调用打卡接口的来源网段（CIDR）。**打卡接口不校验登录，这就是它唯一的门禁**，部署时必须显式加入办公网段（见 §12.17） |
 
 
 ## 12. 数据模型与持久化约定
@@ -227,7 +233,7 @@
 - 不使用外键约束，关联列只建普通索引，便于后续服务拆分与数据迁移
 - `user` 是 PostgreSQL 保留字，建表与查询必须加双引号，实体上以 `@TableName("\"user\"")` 处理
 
-### 12.2 表清单（15 张，与实体一一对应）
+### 12.2 表清单（19 张，与实体一一对应）
 | 表 | 实体类 | 唯一约束 |
 | --- | --- | --- |
 | `department` | `domain.aggregate.Department` | — |
@@ -235,7 +241,7 @@
 | `department_rank` | `domain.aggregate.entity.DepartmentRank` | `code` |
 | `employee_salary` | `domain.aggregate.entity.EmployeeSalary` | — |
 | `attendance_record` | `domain.aggregate.entity.AttendanceRecord` | — |
-| `attendance` | `domain.aggregate.Attendance` | — |
+| `attendance` | `domain.aggregate.Attendance` | `(work_no, day)` |
 | `role` | `domain.aggregate.Role` | `name` |
 | `authority` | `domain.aggregate.Authority` | `mnemonic` |
 | `role_authority` | `domain.aggregate.entity.RoleAuthority` | `(role_id, mnemonic)` |
@@ -245,16 +251,37 @@
 | `user_login_record` | `domain.aggregate.entity.UserLoginRecord` | — |
 | `user_schedule` | `domain.aggregate.entity.UserSchedule` | — |
 | `announcement` | `domain.aggregate.entity.Announcement` | — |
+| `workflow` | `domain.aggregate.Workflow` | — |
+| `workflow_node` | `domain.aggregate.entity.WorkflowNode` | — |
+| `work_order` | `domain.aggregate.WorkOrder` | — |
+| `work_order_activity` | `domain.aggregate.entity.WorkOrderActivity` | — |
 
 > `authority` 为**两级权限**：`type` = 1 模块分组（菜单）/ 2 功能页，助记符的万位区分所属模块分组，见 §12.6。
 
-**业务键唯一性（必须保持）**：三个业务键由数据库唯一索引兜底，禁止重复写入。
+> **考勤（`attendance_record` / `attendance`）**：明细与汇总的关系——前者是一次刷卡一行（只追加），
+> 后者是一人一天一行（可重算）。`attendance` 的业务键 `(work_no, day)` 由唯一索引
+> `uk_attendance_work_no_day` 兜底，同时是定时任务幂等 upsert 的冲突键。见 §12.17。
+
+> **流程与工单（`workflow` / `workflow_node` / `work_order` / `work_order_activity`，当前仅数据模型，暂无页面与接口）**：
+> `workflow` 存流程定义（`template` 为节点编排 JSON），节点明细在 `workflow_node`——`sort` 决定串联顺序，
+> `type` = 0 起始 / 1 审批 / 2 结束；审批节点再以 `approval_type` = 1 指定人员 / 2 直属上级 / 3 指定角色
+> 配合 `approval_mode` = 1 或签（一人通过即生效）/ 2 会签（全员通过才生效）描述审批规则，
+> `approval_values` 存配置值（指定人员存用户ID、多个逗号分隔；指定角色存角色ID）。
+> `work_order` 是按模板发起的一次审批实例（`start_time` 起始、`end_time` 截止，
+> `status` = 0 审批中 / 1 已通过 / 2 已拒绝 / 3 已撤销），
+> `work_order_activity` 记录工单在每个节点的流转留痕（`node_name` 存节点快照，改名不影响历史；
+> `status` = 0 未开始 / 1 待处理 / 2 已通过 / 3 已转交 / 9 驳回）。
+> 关联列类型与被引用主键保持一致：`workflow_node.workflow_id` / `work_order.workflow_id` 为 `integer`，
+> `work_order_activity.work_order_id` 为 `bigint`（对应 `work_order.id`）。
+
+**业务键唯一性（必须保持）**：四个业务键由数据库唯一索引兜底，禁止重复写入。
 
 | 业务键 | 唯一索引 | 说明 |
 | --- | --- | --- |
 | `employee.work_no` | `uk_employee_work_no` | 员工工号，应用层 `EmployeeService.ensureWorkNoUnique` 先查重给友好提示 |
 | `authority.mnemonic` | `uk_authority_mnemonic` | 权限助记符，同时是 seed 幂等 upsert 的冲突键 |
 | `user_account.identifier` | `uk_user_account_identifier` | 登录标识，一个登录名只能绑定一个账号 |
+| `attendance.(work_no, day)` | `uk_attendance_work_no_day` | 考勤统计「一人一天一行」，同时是定时任务幂等 upsert 的冲突键（见 §12.17） |
 
 - 唯一性统一用 `create unique index` 表达（**不用** `alter table ... add constraint`）：既能被 `on conflict (列) do update` 直接用作冲突键，也便于后续按需降级为普通索引
 - 重复写入抛 `DuplicateKeyException`，由 `GlobalExceptionHandler` 转成「数据已存在…」的业务提示，不会落到 500
@@ -278,6 +305,8 @@
 3. 全局 `logic-delete-field: deleted` 只在实体上存在同名字段时才生效；当前各实体用 `status` 表达业务状态，未启用软删除。如需启用，补 `deleted` 列并在实体加 `@TableLogic`。
 4. 主键策略全局为 `auto`，实体侧仍显式标注 `IdType.AUTO`，避免配置漂移后主键生成方式被悄悄改变。
 5. **`updateStrategy = FieldStrategy.ALWAYS` 与 NOT NULL 约束会冲突**：`Employee` 的可选字段用 ALWAYS 实现「表单未填即清空」，若列上有 `NOT NULL` 约束，更新时会直接抛约束异常；因此这些列必须是**可空**的（`gender` / `education` / `rank` 已去掉 NOT NULL 与默认值，避免用 0 与枚举有效值混淆）。同时注意：ALWAYS 意味着直接调用 Mapper 做部分更新会把未传字段置空，部分更新场景请自行补齐字段或改用 `UpdateWrapper`。
+6. **自定义 SQL（`@Insert`/`@Select` 注解或 XML）不走自动填充**：`MyMetaObjectHandler` 只在 MyBatis-Plus 自身注入的方法里生效，自己写的 SQL 必须显式带上 `create_time` / `update_time`（参考 `AttendanceMapper#upsert` 用 `current_timestamp`）。
+7. **`on conflict` upsert 的 null 参数要显式写 `jdbcType`**：如 `#{first,jdbcType=BIGINT}`，否则 Postgres 驱动遇 null 可能报 `JdbcType OTHER` 无法推断类型。
 
 ### 12.6 字典数据初始化
 - 业务字典的初始数据放在 `docs/db/seed-*.sql`（按表拆分：`seed-department.sql`、`seed-department-rank.sql`、`seed-authority.sql`），与建表脚本分开维护
@@ -381,7 +410,7 @@
   | --- | --- | --- | --- |
   | `id` | `Long` | 否 | 自增主键 |
   | `title` | `String` | 否 | 标题，`varchar(200)` |
-  | `content` | `String` | 否 | 内容，`text`（长文本，不设长度上限） |
+  | `content` | `String` | 否 | 正文，`text`（长文本，不设列长度上限）；**富文本 HTML**，见 §12.11 |
   | `attachment` | `String` | 是 | **单个**附件，存文件路径或 URL（`varchar(255)`），为空表示无附件 |
   | `status` | `Integer` | 否 | 状态，见 `AnnouncementStatusEnum`，默认 **1 草稿** |
   | `publish_time` | `LocalDateTime` | 是 | 发布时间：**草稿态为空**，发布时写入 |
@@ -393,6 +422,7 @@
 - `attachment` 用 `updateStrategy = FieldStrategy.ALWAYS`：编辑时传 null 即「移除附件」；`publish_time` 保持默认策略（null 不参与更新），因此编辑不会抹掉首次发布时间
 - 索引按访问路径设计：`(status, publish_time)` 支撑「已发布公告列表（`status = ?` 按发布时间倒序）」，`create_time` 支撑后台按创建时间浏览全部公告
 - 附件是**单值列**而非子表：一条公告最多一个附件；若将来需要多附件，再拆 `announcement_attachment` 子表并迁移该列
+- **`content` 存的是富文本 HTML**（2026-10-16 起）：老数据仍是纯文本，两种形态在库里共存，渲染侧按是否含块级标签分流（见 §12.11）
 - 相关测试：`DomainPersistenceTest#insertAnnouncementWorks`（草稿态 `publish_time`/`attachment` 为 `null`、已发布态时间与附件往返一致、`create_time` 自动填充）
 
 ### 12.11 公告管理（页面与接口）
@@ -406,12 +436,32 @@
 - **发布时间只在首次发布时落定**：`publish` 时若已有 `publish_time` 则沿用（下线后重新发布不会刷新时间），保证「什么时候发出去的」可追溯
 - 状态流转校验（`AnnouncementService`）：重复发布 → 「该公告已是发布状态，无需重复发布」；下线草稿 → 「只有已发布的公告才能下线」
 - 前端交互：列表行按状态给出「发布」或「下线」按钮；新建弹窗底部是「保存草稿 / 保存并发布」两个提交按钮，编辑时只保留「保存」且**不传 `status`**，避免「只想改错别字却把草稿发出去了」
+- **正文是富文本**（2026-10-16 起）：编辑用本地内置的 Quill 2（`static/vendor/quill/`），渲染前用本地内置的 DOMPurify 清洗
+  - **三处白名单必须一致**：编辑器工具栏（`announcements.js` 的 `modules.toolbar`）、前端 `ALLOWED_TAGS`、服务端 `RichTextUtils.SAFELIST`。当前是「精简」方案，只开放加粗 / 斜体 / 下划线 / 有序·无序列表，对应标签 `p/br/strong/b/em/i/u/ol/ul/li`；要放开新格式（标题、链接等）必须三处同改，否则内容会被静默丢掉
+  - 编辑器同时收窄 `formats`（不只看工具栏）：工具栏决定按钮，`formats` 才决定「粘贴进来的内容能保留多少格式」；图片/文件的拖入与粘贴在事件层直接拦掉
+  - 落库前服务端**再清洗一次**（`RichTextUtils.sanitize`，jsoup `Safelist`）：前端 DOMPurify 只保护「页面自己渲染」这条路，绕过页面直接调接口能塞进 `<script>`，最终防线必须在服务端。清洗输出用 `prettyPrint(false)`，避免 jsoup 补的换行缩进被原样存库
+  - 正文长度按**纯文字**计（`RichTextUtils.toPlainText`）：上限 20000 字，排版标记不占额度；`AnnouncementSaveDTO.content` 上的 `@Size(max = 100000)` 只是防滥用粗筛
+  - 清洗后没有实际文字的内容被拒（「公告内容不能为空」），防止只存了一堆空标签
+  - 存库取 `getSemanticHTML()`：Quill 编辑器内部是 `<li data-list="ordered"><span class="ql-ui">…`，直接取 `innerHTML` 会把私有属性带进库
+- **编辑器资源本地内置、不走 CDN**：放 `static/vendor/**`（与 `sm2.js` 同一思路）；该目录已加入 `WebMvcConfig.EXCLUDE_PATTERNS`，与 `/css`、`/js`、`/img` 同级放行
+- 列表摘要与欢迎页摘要：正文先经 `App.htmlToText` 转纯文本再截断（40 / 48 字），否则标签会被截进来一起显示
 - **查看详情（只读）**：列表只展示标题与 40 字摘要，正文不可见。行内「详情」按钮或**直接点击标题**打开只读弹窗 `#announcementDetailModal`
   - 数据按 id 现取 `GET /api/announcements/{id}`，避免列表缓存与库内不一致
   - 弹窗内只有元信息（状态徽标 / 作者 / 发布时间 / 创建时间 / 公告 ID）+ 正文 + 附件，**无任何输入控件与提交按钮**（只读语义，不复用编辑表单）
-  - 正文用 `textContent` 写入并配 `white-space: pre-wrap`，**保留原始换行与空行**，长内容在 `max-height: 42vh` 内滚动，不撑爆弹窗
+  - 正文按内容形态分流（`renderContent`）：含块级标签 → DOMPurify 清洗后 `innerHTML`（`.ann-detail__content` 走常规文档流，另给 `p/ul/ol/li/strong/em/u` 补样式）；不含标签 → 原样 `textContent` 并加 `.ann-detail__content--plain`，用 `white-space: pre-wrap` **保住历史纯文本公告的换行与空行**。长内容在 `max-height: 42vh` 内滚动，不撑爆弹窗
   - 空值兜底：草稿的发布时间显示 `—`，无附件显示「该公告没有附件」
   - 关闭方式与编辑弹窗统一：× / 关闭按钮 / 点遮罩 / `Esc`（`bindDismiss(modal, onClose)` 两个弹窗共用）
+- **从详情弹窗直接转编辑**（2026-10-16 起）：详情弹窗 footer 是「编辑 + 关闭」，点「编辑」先 `closeDetailModal()` 再按缓存的 `state.detailRecord` 打开编辑弹窗并回填——**不再多发一次 `GET /{id}`**，因为详情数据刚取过
+- **编辑回填必须把纯文本转成 HTML 段落**（`plainTextToHtml`）：历史公告正文是含换行的纯文本，若直接塞进 Quill 会被当成**单个段落**，换行全部丢失。转换规则：
+  - 先把 `\r\n` 归一成 `\n`，去掉末尾空行，再 `split('\n')` 逐行成段
+  - 普通行 → `<p>转义后的行</p>`；空行 → `<p><br></p>`（**不能靠 Quill 保留空行**，它会把连续 `<br>` 归一并压掉空段）
+  - 输入全是空白时函数**自身返回空串**，避免产出 `<p><br></p>` 这种「看着有内容」的假数据
+  - `setEditorContent` 按「是否含块级标签」分流：含标签 → 直接 `dangerouslyPasteHTML`；不含 → 先过 `plainTextToHtml`
+  - 已知副作用：Quill 会把 `<br>` **归一成多个独立 `<p>`**，所以「一行 `<br>`」与「两行 `<p>`」在编辑器里视觉一致但 DOM 不同；写断言时不要断言 `<br>` 数量为 0
+- **列表操作列吸附右侧**（2026-10-16 起）：`1440/1280` 宽度下操作列原本会被裁掉（实测溢出 256px），导致「有编辑按钮但点不到」。`.table-wrap .table` 最后一列 `position: sticky; right: 0`，并给表头、hover 态、左侧阴影补齐背景，滚动时操作列常驻可见
+- 标题列限宽 `.ann-cell { max-width: 318px }`：这是按**当前最长标题 23 字 ≈ 渲染 311px** 反推的值（内边距收窄到 12px 后），改小会把长标题截断。加吸附列后总宽收窄，需与标题限宽一起调，二者是耦合的
+- 时间列统一 `formatListTime` **去掉秒**（`yyyy-MM-dd HH:mm`）：秒对列表无信息量，且会把时间列撑宽
+- 相关测试：`AnnouncementApiTest` 覆盖详情弹窗编辑按钮存在性
 
 ### 12.12 我的日程（页面与接口）
 - 入口：顶部导航「我的日程」→ `/schedules`（`active = schedules`）
@@ -509,6 +559,95 @@
   `AuthorityDictionaryTest`（3 例）改为**包含式**断言 seed 的 23 条基线完整，不再限制运维后新增的权限
 
 
+### 12.17 考勤（打卡 + 每日统计）
+
+**两张表的分工是「明细 → 汇总」**：`attendance_record` 存原始打卡（一次刷卡一行，只追加），`attendance` 存按人按天的统计（一人一天一行，可重算）。规则（几点算迟到、加班怎么算）随时会变，而原始记录一旦落库就不该再改——改规则时重算汇总即可，不必动明细。
+
+#### 打卡接口
+- `POST /api/attendance/punch`，入参 `AttendancePunchDTO`：`workNo`（必填，≤32）+ `location`（可选，≤255）
+- **打卡时间一律取服务端时钟**（`System.currentTimeMillis()`），入参里**没有** `punchTime` 字段
+  - 允许客户端传时间的代价是改一下本机时间就能伪造考勤，而事后从数据上根本看不出哪条是假的；离线设备补录历史应走带审计的独立入口，而不是让常规打卡接口接受任意时间
+- 只放行**在职**员工（试用期 / 正式）：工号不存在 → 「工号 X 不存在，无法打卡」；已离职/辞退 → 「员工「X」已离职，无法打卡」。离职人员打卡没有业务意义，只会让当天凭空多一行统计
+- 判定统一用 `EmployeeStatusEnum.isActive(Integer)`，不要在各处手写 `status == 0 || status == 1`
+- 落库固定 `attendance_record.status = 1 有效`；「无效」是事后作废动作（见下）
+
+**访问控制：不校验登录，按来源网段收敛**
+- 打卡接口是**唯一**从 `LoginInterceptor` 管辖里摘出来的 `/api/**` 接口（见 `WebMvcConfig`）。
+  理由：调用方是**打卡机这类无会话设备**，让设备先登录既别扭，又会在服务重启/会话过期时
+  让打卡静默失败；而登录用户是这个管理软件的管理员（HR、行政），不是员工
+- 门禁落在 `AttendancePunchSourceInterceptor`：来源命中 `app.attendance.allowed-networks` 才放行，
+  否则 **403 + `code=403`** 并记 `WARN`（带来源地址与生效网段，便于排查）
+- **只读 `request.getRemoteAddr()`，绝不读 `X-Forwarded-For`**：透传头由调用方完全可控，
+  读它等于把白名单交给对方自己填。`AttendanceApiTest` 里有一条用例专门锁这件事
+  （伪造 `X-Forwarded-For: 127.0.0.1` 仍须 403）
+- 网段解析在 `infrastructure.utils.IpUtils#parseNetworks`：支持 CIDR、裸 IP（按单地址）、
+  IPv4 与 IPv6，并归一 `::ffff:127.0.0.1`（双栈容器里回环常是这个写法）与 `fe80::1%en0`（作用域标识）。
+  **非法配置直接抛异常让启动失败**，不允许静默变成「什么都不匹配」（打卡全挂）或「什么都匹配」
+- 白名单为空 → **拒绝一切来源**（fail closed）。宁可是「配漏了、打卡立刻全失败且日志写清原因」，
+  也不要「接口对全网敞开而无人察觉」
+- 默认值收敛到回环，**不含任何办公网段**：放行内网必须靠显式配置，不能靠默认值
+- 服务部署在 nginx 之后时，用 `server.forward-headers-strategy=framework` 让容器（只信任直连代理）
+  改写 remoteAddr，**不要**把代理地址加进白名单——那等于放行代理背后的所有人
+- 遗留：设备身份只能靠 IP 识别，无法区分「哪一台打卡机」。若将来要给每台设备单独发凭证并支持吊销，
+  应新增设备表 + `X-Device-Token`，届时白名单退化为第二道防线
+
+#### 每日统计定时任务
+- `infrastructure.tasks.AttendanceStatisticsTask`，`@Scheduled(cron = "${app.attendance.statistics-cron:0 0 8 * * ?}")`，**每天 08:00 汇总前一天**
+  - 为什么是「昨天」：当天打卡还没结束（可能有人加班到深夜），8 点统计今天等于把半天数据当全天
+  - 为什么是 8 点：早于上班时间，员工到岗时昨天的考勤已算好
+- 主类已加 `@EnableScheduling`（新增 `@Scheduled` 任务不再需要额外开关）
+- 任务只做「挑日子 + 记日志」，判定规则全在 `AttendanceService#statisticsFor(LocalDate)`——日期是入参，人工补算任意一天直接调服务即可，不必绕过调度的壳
+- **统计范围是全部在职员工**，不只是当天打过卡的人：没打卡的人同样占一行（`status = 0 缺卡`）。否则「少一行」和「没这个人」无法区分，缺勤根本查不出来
+- **判定规则**（`app.attendance.work-start` / `work-end`，默认 09:00 / 18:00）：
+  | 条件 | `status` | 说明 |
+  | --- | --- | --- |
+  | 当天无有效打卡 | `0 缺卡` | `first`/`last` 均为 **null**（填 0 会变成 1970-01-01，混进时间字段后任何排序/做差都荒谬） |
+  | 最早打卡 **>** 上班时间 | 计入迟到 | 等于上班时间**不算**迟到 |
+  | 最晚打卡 **<** 下班时间 | 计入早退 | 等于下班时间**不算**早退 |
+  | 两者都中 | `4 迟到且早退` | 组合规则集中在 `AttendanceStatusEnum.of(late, earlyLeave)` |
+  | 兜底 | `1 正常` | |
+- `first` = 当天最早打卡，`last` = 当天最晚打卡，**与插入顺序无关**（取 min/max）
+- `extra`（加班）= `(last - 下班时间) / 3600000` 小时，不足 0 取 0，**保留 2 位小数**（与 `numeric(10,2)` 对齐）
+- 一天的时间窗口是**左闭右开** `[当天 00:00, 次日 00:00)`：当天 00:00:00 整算当天，次日 00:00:00 整算次日
+- **跨天加班是已知局限**：干到次日凌晨 1 点会落到第二天的窗口，被算成第二天的最早打卡。要正确处理得引入班次（shift）概念，当前表结构里没有这个维度
+- **失效记录不参与统计**：只取 `attendance_record.status = 1 有效` 的打卡
+- **时区必须显式配置**（`app.attendance.zone`，默认 `Asia/Shanghai`）：容器镜像默认多半是 UTC，用 JVM 默认时区会把早 8 点的卡算到前一天，迟到早退全判错。`@ConfigurationProperties` 里存 String（不是 `ZoneId`），经 `zoneId()` 解析，避免类型绑定的不确定性
+
+#### 幂等与并发
+- `attendance` 的业务键是 **`(work_no, day)`**，唯一索引 `uk_attendance_work_no_day`（原普通索引 `idx_attendance_work_no_day` 已升级并移除）
+- 写入走 `AttendanceMapper.upsert` 的 `on conflict (work_no, day) do update`：用「先查后插/改」会留出并发窗口，两边都查不到就会插出重复行
+- 因此定时任务**可以放心重跑**（多实例同时触发、人工补算、改完上下班时间重算）
+- **没有加分布式锁**：多副本 K8s 下每个实例都会在 8 点触发，重复执行的代价只是白算一遍；而引入 Redis 锁反而多出一个「锁没释放导致当天彻底不跑」的故障模式
+- `create_time` 只在 insert 分支写入，冲突走 update 时不刷新，保留「这行第一次是什么时候生成的」
+- 自定义 `@Insert` 的 SQL **必须自己带 `create_time`**：MyBatis-Plus 的自动填充只在它自身注入的方法里生效
+- 整天（`statisticsFor`）在**一个事务**里：几百人规模下代价可忽略，换来要么全算对、要么一行不写，不留算一半的中间状态
+- 任务里吞掉异常并记 `ERROR` 日志（带日期便于排查/补算）；判定逻辑本身在 `statisticsFor` 里，异常会正常抛给调用方
+
+#### 配置（`app.attendance.*`）
+| 配置 | 默认 | 说明 |
+| --- | --- | --- |
+| `enabled` | `true` | 统计任务开关，关闭后任务只记日志不写库 |
+| `work-start` | `09:00` | 上班时间，晚于它记迟到 |
+| `work-end` | `18:00` | 下班时间，早于它记早退，晚于它的部分算加班 |
+| `zone` | `Asia/Shanghai` | 判定归属哪一天的时区 |
+| `statistics-cron` | `0 0 8 * * ?` | 任务执行时间 |
+| `allowed-networks` | `127.0.0.1/32,::1/128` | 打卡接口允许的来源网段（CIDR，逗号分隔）。**打卡接口不校验登录，这是它唯一的门禁**；留空即拒绝一切来源 |
+
+> **踩坑**：占位符的默认值**不能加引号**。写成 `${ATTENDANCE_WORK_START:"09:00"}` 时默认值会带上字面引号，绑定 `LocalTime` 直接失败（YAML 不需要引号——值里有 `${` 就已是字符串，不会被当成时间量）。
+
+#### 测试
+- `AttendanceApiTest`（14 例）：**免登录即可打卡**、**默认白名单只有回环**、来源不在网段内 403、
+  **伪造 `X-Forwarded-For` 不能绕过**、IPv4 映射与 IPv6 回环都命中、在职打卡成功（落一条有效记录 +
+  时间取服务端时钟 + 回参与落库一致）、试用期可打卡且位置为空落 null、**客户端传的 `punchTime` 被忽略**（防伪造）、
+  工号不存在、离职/辞退被拒、工号为空与超长、位置超长、缺请求体判 400
+- `AttendancePunchSourceTest`（4 例）：整体替换 `app.attendance.allowed-networks` 后断言
+  **配置项确实生效**（网段内放行、网段外 403、回环仍可用）。单元测试证明不了「配置被读到」这件事，
+  这类「配了但不生效」的故障只会表现成「内网全部打不上卡」
+- `IpNetworkTest`（15 例）：IPv4/IPv6 网段、非整字节前缀（`/25`）、主机位掩码归一、`/0` 标记、
+  裸 IP 等价 `/32`、IPv4 映射写法归一、作用域标识、协议族互不匹配、非法配置抛异常、非法地址不匹配
+- `AttendanceStatisticsTaskTest`（15 例）：最早/最晚与插入顺序无关、零点归属、左右边界、正常/迟到/早退/迟到且早退/缺卡、单次打卡同时算迟到早退、无效记录不参与、有效无效混合只按有效判定、只统计在职员工、**重跑幂等且覆盖**、定时任务汇总昨天 + 开关关闭不写库、`yyyyMMdd` 补零
+- `UniqueConstraintTest` 补 `attendance.work_no` 唯一索引元数据断言（4 个业务键）
+
 ## 13. 安全与认证约定
 
 ### 13.1 登录链路（国密 SM2 传输加密 + BCrypt 存储）
@@ -542,7 +681,10 @@
 ### 13.4 会话与访问控制
 - 登录态存于 `HttpSession`，key 为 `LoginInterceptor.SESSION_USER`，值类型 `CurrentUserVO`
 - `LoginInterceptor` + `WebMvcConfig`：`/api/**` 未登录返回 401 JSON；后台页面未登录 302 到 `/login`
-- 放行清单：`/login`、`/api/auth/**`、`/css/**`、`/js/**`、`/img/**`、`/favicon.ico`、`/error/**`
+- 放行清单：`/login`、`/api/auth/**`、`/css/**`、`/js/**`、`/img/**`、`/vendor/**`、`/favicon.ico`、`/error/**`
+- **`/api/attendance/punch` 是唯一的业务例外**：打卡机这类无会话设备调用，登录拦截对它没有意义，
+  已从登录拦截摘出，改由 `AttendancePunchSourceInterceptor` 按来源网段管控（见 §12.17）。
+  两个拦截器管辖范围互不重叠——登录拦截排除该路径，网段拦截只挂该路径
 - 退出登录：`POST /api/auth/logout` 执行 `session.invalidate()`
 
 ### 13.5 登录页展示约定与「记住登录账号」

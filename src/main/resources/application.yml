@@ -151,6 +151,29 @@ app:
     sm2:
       # 密钥（私钥）有效期，超过后必须重新取公钥
       key-ttl: ${SM2_KEY_TTL:5m}
+  # 考勤（打卡 + 每日统计）
+  attendance:
+    # 考勤统计定时任务开关，关闭后任务只记日志不写库
+    enabled: ${ATTENDANCE_ENABLED:true}
+    # 上班时间：当天最早打卡晚于它记「迟到」，等于它不算迟到
+    # 注意占位符的默认值不能加引号 —— `${X:"09:00"}` 的默认值会带上字面引号，绑定 LocalTime 直接失败
+    work-start: ${ATTENDANCE_WORK_START:09:00}
+    # 下班时间：最晚打卡早于它记「早退」；晚于它的部分计入加班时长
+    work-end: ${ATTENDANCE_WORK_END:18:00}
+    # 判定打卡归属哪一天所用的时区。必须显式配置：容器默认时区多半是 UTC，
+    # 用系统默认值会把早 8 点的卡算到前一天，迟到早退全判错
+    zone: ${ATTENDANCE_ZONE:Asia/Shanghai}
+    # 统计任务的执行时间（cron），默认每天 08:00 汇总前一天
+    statistics-cron: ${ATTENDANCE_STATISTICS_CRON:0 0 8 * * ?}
+    # 允许调用打卡接口的来源网段（CIDR，逗号分隔，也可写裸 IP）。
+    # 打卡接口面向打卡机这类无会话设备，不校验登录，来源网段是它唯一的门禁：
+    #   - 默认只放行本机回环，本机用 curl 自测可通过；
+    #   - 部署时必须把打卡机所在网段加进来，例如 ATTENDANCE_ALLOWED_NETWORKS=192.168.1.0/24,127.0.0.1/32；
+    #   - 留空表示拒绝一切来源（宁可打不上卡立刻暴露，也不要默认敞开）；
+    #   - 只按 request.getRemoteAddr() 判定，读 X-Forwarded-For 会被调用方自己伪造。
+    # 服务前有 nginx 时，请用 server.forward-headers-strategy=framework 让容器改写 remoteAddr，
+    # 而不是把代理地址加进白名单（那等于放行代理背后的所有人）。
+    allowed-networks: ${ATTENDANCE_ALLOWED_NETWORKS:127.0.0.1/32,::1/128}
 
 # ==================== 日志 ====================
 logging:

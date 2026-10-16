@@ -10,6 +10,7 @@ import com.gangtise.backend.domain.aggregate.entity.Announcement;
 import com.gangtise.backend.infrastructure.enums.AnnouncementStatusEnum;
 import com.gangtise.backend.infrastructure.exception.BizException;
 import com.gangtise.backend.infrastructure.repository.mapper.AnnouncementMapper;
+import com.gangtise.backend.infrastructure.utils.RichTextUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -32,6 +33,8 @@ public class AnnouncementService {
 
     private static final int DEFAULT_PAGE_SIZE = 10;
     private static final int MAX_PAGE_SIZE = 100;
+    /** 正文允许的最大纯文字长度（不含排版标记），与前端编辑器的提示口径一致。 */
+    private static final int MAX_CONTENT_TEXT_LENGTH = RichTextUtils.MAX_TEXT_LENGTH;
     /** 欢迎页「发布的公告」默认条数。 */
     public static final int DEFAULT_RECENT_LIMIT = 10;
     private static final int MAX_RECENT_LIMIT = 50;
@@ -90,7 +93,7 @@ public class AnnouncementService {
 
         Announcement announcement = new Announcement();
         announcement.setTitle(dto.getTitle().trim());
-        announcement.setContent(dto.getContent().trim());
+        announcement.setContent(normalizeContent(dto.getContent()));
         announcement.setAttachment(trimToNull(dto.getAttachment()));
         announcement.setStatus(status);
         announcement.setPublishTime(AnnouncementStatusEnum.isPublished(status) ? LocalDateTime.now() : null);
@@ -111,7 +114,7 @@ public class AnnouncementService {
         Announcement announcement = new Announcement();
         announcement.setId(id);
         announcement.setTitle(dto.getTitle().trim());
-        announcement.setContent(dto.getContent().trim());
+        announcement.setContent(normalizeContent(dto.getContent()));
         announcement.setAttachment(trimToNull(dto.getAttachment()));
 
         int status = dto.getStatus() == null ? existing.getStatus() : dto.getStatus();
@@ -185,6 +188,27 @@ public class AnnouncementService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * 正文落库前的清洗与校验：先按白名单清洗 HTML，再按**纯文字**判空与限长。
+     *
+     * <p>为什么必须在服务端做：正文以 HTML 存储，前端 DOMPurify 只保护「页面自己渲染」这条路，
+     * 直接调接口（或导入数据）可以绕过它，所以最终防线在服务端。
+     *
+     * <p>为什么按纯文字计数：排版标记不该占用户额度——同样一段文字，加粗与否不该影响能否提交；
+     * 而且 DTO 上 100000 的上限只是防滥用粗筛，真正的产品约束（20000 字）在这里落地。
+     */
+    private static String normalizeContent(String rawContent) {
+        String html = RichTextUtils.sanitize(rawContent);
+        String plain = RichTextUtils.toPlainText(html);
+        if (plain.isEmpty()) {
+            throw new BizException("公告内容不能为空");
+        }
+        if (plain.length() > MAX_CONTENT_TEXT_LENGTH) {
+            throw new BizException("公告正文最长 " + MAX_CONTENT_TEXT_LENGTH + " 字，当前 " + plain.length() + " 字");
+        }
+        return html;
     }
 
 }

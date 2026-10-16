@@ -1,7 +1,9 @@
 package com.gangtise.backend.domain.aggregate;
 
 import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
@@ -18,6 +20,7 @@ public class WorkOrder implements Serializable {
 
     private static final long serialVersionUID = 1L;
     //自增数据
+    @TableId(value = "id", type = IdType.AUTO)
     private Long id;
     //发起人
     private Integer createUserId;

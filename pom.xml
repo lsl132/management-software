@@ -30,6 +30,8 @@
     <mybatis-plus.version>3.5.12</mybatis-plus.version>
     <!-- 国密 SM2 加解密：spring-boot-dependencies 未托管 bcprov，需自行锁定版本 -->
     <bouncycastle.version>1.81</bouncycastle.version>
+    <!-- HTML 清洗（公告富文本落库前按白名单过滤）：BOM 未托管，自行锁定版本 -->
+    <jsoup.version>1.18.3</jsoup.version>
   </properties>
 
   <dependencyManagement>
@@ -108,6 +110,13 @@
       <groupId>org.bouncycastle</groupId>
       <artifactId>bcprov-jdk18on</artifactId>
       <version>${bouncycastle.version}</version>
+    </dependency>
+
+    <!-- HTML 清洗：公告富文本正文落库前按白名单过滤，防存储型 XSS（防前端绕过直接调接口） -->
+    <dependency>
+      <groupId>org.jsoup</groupId>
+      <artifactId>jsoup</artifactId>
+      <version>${jsoup.version}</version>
     </dependency>
 
     <!-- 工具 -->

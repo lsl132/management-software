@@ -1,6 +1,8 @@
 /* ==========================================================================
    公告管理页脚本：公告增删改查 + 发布/下线，全部 ajax，无整页刷新
    约定：作者由服务端按登录用户写入；发布时间只在首次发布时确定
+   正文为富文本：编辑用 Quill（仅开放「精简」排版），存库前服务端还会用 jsoup 再清洗一遍，
+   前端渲染时用 DOMPurify 按同一份白名单清洗——三处白名单必须保持一致
    ========================================================================== */
 (function (window, document) {
     'use strict';
@@ -11,6 +13,17 @@
     var STATUS_PUBLISHED = 2;
     var STATUS_OFFLINE = 3;
 
+    /** 正文允许的最大纯文字长度（不含排版标记），与服务端 RichTextUtils 的校验保持一致。 */
+    var MAX_CONTENT_TEXT_LENGTH = 20000;
+
+    /** 富文本白名单：编辑器工具栏、前端 DOMPurify、服务端 jsoup 三处必须一致。 */
+    var ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ol', 'ul', 'li'];
+    /** 出现这些标签就按富文本渲染；否则视为历史纯文本公告，按原文保留换行。 */
+    var RICH_BLOCK_TAGS = /<(p|br|div|ul|ol|li|h[1-6]|blockquote|strong|b|em|i|u|s)\b/i;
+
+    /** Quill 实例，页面初始化时创建。 */
+    var quill = null;
+
     var state = {
         current: 1,
         size: 10,
@@ -20,7 +33,9 @@
         loadedCount: 0,
         editingId: null,
         /** 本次提交要附带的状态：草稿/发布由按钮决定，编辑时为 null（不变更状态） */
-        submitStatus: null
+        submitStatus: null,
+        /** 当前详情弹窗展示的那条公告，供「详情 → 编辑」直接复用，避免再请求一次 */
+        detailRecord: null
     };
 
     var el = {
@@ -41,7 +56,7 @@
         form: document.getElementById('announcementForm'),
         error: document.getElementById('announcementError'),
         title: document.getElementById('title'),
-        content: document.getElementById('content'),
+        contentEditor: document.getElementById('contentEditor'),
         attachment: document.getElementById('attachment'),
         btnSaveDraft: document.getElementById('btnSaveDraft'),
         btnSavePublish: document.getElementById('btnSavePublish'),
@@ -51,8 +66,116 @@
         detailTitle: document.getElementById('announcementDetailTitle'),
         detailMeta: document.getElementById('announcementDetailMeta'),
         detailContent: document.getElementById('announcementDetailContent'),
-        detailAttachment: document.getElementById('announcementDetailAttachment')
+        detailAttachment: document.getElementById('announcementDetailAttachment'),
+        btnDetailEdit: document.getElementById('btnDetailEdit')
     };
+
+    /* ------------------------------------------------------------ 富文本编辑器 */
+
+    /**
+     * 初始化 Quill：只开放「加粗 / 斜体 / 下划线 / 有序·无序列表」四种排版。
+     *
+     * <p>{@code formats} 与工具栏同时收窄——工具栏只决定按钮，{@code formats} 才决定
+     * 「粘贴进来的内容能保留多少格式」，两者都收窄才能保证只产出白名单内的标签。
+     */
+    function initEditor() {
+        if (!el.contentEditor || !window.Quill) {
+            return;
+        }
+        quill = new window.Quill(el.contentEditor, {
+            theme: 'snow',
+            formats: ['bold', 'italic', 'underline', 'list'],
+            placeholder: '公告正文…',
+            modules: {
+                toolbar: [
+                    ['bold', 'italic', 'underline'],
+                    [{list: 'ordered'}, {list: 'bullet'}]
+                ]
+            }
+        });
+
+        // 不开放媒体：拖入文件直接拦掉，粘贴图片在捕获阶段拦掉（抢在 Quill 之前）
+        quill.root.addEventListener('drop', function (event) {
+            if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length) {
+                event.preventDefault();
+                App.toast('正文暂不支持插入图片或文件，请使用文字排版', 'err');
+            }
+        });
+        quill.root.addEventListener('paste', function (event) {
+            var data = event.clipboardData;
+            if (data && data.files && data.files.length) {
+                event.preventDefault();
+                event.stopPropagation();
+                App.toast('正文暂不支持粘贴图片，请使用文字排版', 'err');
+            }
+        }, true);
+    }
+
+    /** 取正文（语义化 HTML）。只剩空行时归一为空串，避免存进 `<p><br></p>` 这类空壳。 */
+    function getEditorContent() {
+        if (!quill || quill.getText().trim() === '') {
+            return '';
+        }
+        return quill.getSemanticHTML();
+    }
+
+    /**
+     * 历史纯文本正文 → HTML。
+     *
+     * <p>库里早期公告存的是纯文本，且**都带换行**（实测 50 条全部命中）。若直接
+     * `dangerouslyPasteHTML`，HTML 里的 `\n` 只是空白字符，换行会被压成空格、整篇挤成一段。
+     *
+     * <p>**逐行转成一个 `<p>`**，而不是「段内用 `<br>`、空行分段」：Quill 的文档模型里
+     * 「一行」本来就是一个块（回车即新建段落），实测把 `<br>` 粘进去它也会被规范化成
+     * 独立段落。按它的模型来写，形态才稳定——编辑一次再打开不会漂移，也不会出现
+     * 「本以为是一段、渲染成两段」的错位。空行转 `<p><br></p>` 把空行一并留住，
+     * 与详情页 `white-space: pre-wrap` 的观感对齐。
+     */
+    function plainTextToHtml(text) {
+        var normalized = String(text).replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+        if (!normalized) {
+            return '';
+        }
+        return normalized
+            .split('\n')
+            .map(function (line) {
+                return line === '' ? '<p><br></p>' : '<p>' + App.escapeHtml(line) + '</p>';
+            })
+            .join('');
+    }
+
+    /**
+     * 回填正文。
+     *
+     * <p>按形态分流：本就是富文本 HTML 的原样清洗后灌入；历史纯文本先按换行还原成段落。
+     * 无论哪种，编辑一次之后保存回去就统一成了富文本。
+     */
+    function setEditorContent(html) {
+        if (!quill) {
+            return;
+        }
+        quill.setText('');
+        var value = html === null || html === undefined ? '' : String(html);
+        if (!value.trim()) {
+            return;
+        }
+        quill.clipboard.dangerouslyPasteHTML(sanitizeRich(RICH_BLOCK_TAGS.test(value) ? value : plainTextToHtml(value)));
+    }
+
+    /**
+     * 按白名单清洗 HTML。
+     *
+     * <p>DOMPurify 未加载时**降级为纯文本转义**（宁可丢掉排版也不放大 XSS 面）。
+     * 服务端还会再清洗一次，这里是渲染前的第一道防线。
+     */
+    function sanitizeRich(html) {
+        var raw = html === null || html === undefined ? '' : String(html);
+        if (!window.DOMPurify) {
+            window.console.warn('[公告] DOMPurify 未加载，正文按纯文本渲染');
+            return App.escapeHtml(raw);
+        }
+        return window.DOMPurify.sanitize(raw, {ALLOWED_TAGS: ALLOWED_TAGS, ALLOWED_ATTR: []});
+    }
 
     /* ------------------------------------------------------------ 渲染 */
 
@@ -65,15 +188,24 @@
         return '<span class="badge ' + cls + '">' + text + '</span>';
     }
 
-    /** 标题列：标题本身可点击打开只读详情，下方是灰色摘要（不把长正文塞进表格）。 */
+    /**
+     * 标题列：标题本身可点击打开只读详情，下方是灰色摘要（正文转纯文本后截断，不把标签带出来）。
+     *
+     * <p>整段装在 `.ann-cell` 里限宽（见 CSS）——否则 40 字摘要会把「标题」列撑到 538px，
+     * 把「操作」列挤出可视区。被截断的文案挂在 `title` 上，悬浮可看全。
+     */
     function summaryCell(record) {
-        var text = record.content ? String(record.content) : '';
-        if (text.length > 40) {
-            text = text.slice(0, 40) + '…';
-        }
-        return '<button type="button" class="ann-cell__title" data-view="' + record.id + '"'
-            + ' title="查看公告详情">' + App.dash(record.title) + '</button>'
-            + (text ? '<span class="ann-cell__summary">' + App.escapeHtml(text) + '</span>' : '');
+        var full = App.htmlToText(record.content).replace(/\s+/g, ' ');
+        var text = full.length > 40 ? full.slice(0, 40) + '…' : full;
+        var title = record.title === null || record.title === undefined ? '' : String(record.title);
+        return '<div class="ann-cell">'
+            + '<button type="button" class="ann-cell__title" data-view="' + record.id + '"'
+            + ' title="查看公告详情：' + App.escapeHtml(title) + '">' + App.dash(record.title) + '</button>'
+            + (text
+                ? '<span class="ann-cell__summary" title="' + App.escapeHtml(full) + '">'
+                    + App.escapeHtml(text) + '</span>'
+                : '')
+            + '</div>';
     }
 
     function attachmentCell(record) {
@@ -97,6 +229,18 @@
         return html;
     }
 
+    /**
+     * 列表里的时间：去掉秒。
+     *
+     * <p>一行里塞两个含秒的完整时间戳，比不带秒多占约 42px，会把整张表挤到横向滚动、
+     * 让「创建时间」被右侧吸附的操作列压掉尾巴。秒在列表里没有参考价值（完整时间戳在
+     * 「详情」弹窗里仍能看到），去掉后表格正好收进容器。
+     */
+    function formatListTime(value) {
+        var text = App.formatDateTime(value);
+        return text ? text.replace(/(\d{2}:\d{2}):\d{2}$/, '$1') : text;
+    }
+
     function renderRows(records) {
         if (!records || records.length === 0) {
             el.body.innerHTML = '<tr><td colspan="8" class="table__empty">暂无公告数据</td></tr>';
@@ -108,9 +252,9 @@
                 + '<td>' + summaryCell(row) + '</td>'
                 + '<td>' + statusBadge(row.status) + '</td>'
                 + '<td>' + App.dash(row.author) + '</td>'
-                + '<td>' + App.dash(App.formatDateTime(row.publishTime)) + '</td>'
+                + '<td>' + App.dash(formatListTime(row.publishTime)) + '</td>'
                 + '<td>' + attachmentCell(row) + '</td>'
-                + '<td>' + App.dash(App.formatDateTime(row.createTime)) + '</td>'
+                + '<td>' + App.dash(formatListTime(row.createTime)) + '</td>'
                 + '<td>' + actionCell(row) + '</td>'
                 + '</tr>';
         }).join('');
@@ -166,7 +310,7 @@
         setFooterMode(record ? 'edit' : 'create');
 
         setField('title', record ? record.title : '');
-        setField('content', record ? record.content : '');
+        setEditorContent(record ? record.content : '');
         setField('attachment', record ? record.attachment : '');
 
         el.modal.hidden = false;
@@ -206,12 +350,36 @@
             + ' target="_blank" rel="noopener">' + App.escapeHtml(record.attachment) + '</a>';
     }
 
+    /**
+     * 渲染正文。
+     *
+     * <p>老公告的正文是纯文本（可能带换行），新公告是富文本 HTML，两者共存：
+     * 含块级标签 → 清洗后 innerHTML（`.ann-detail__content` 用常规空白处理）；
+     * 不含标签 → 原样 textContent 并加 `--plain`（靠 `white-space: pre-wrap` 保住换行）。
+     */
+    function renderContent(content) {
+        var raw = content === null || content === undefined ? '' : String(content);
+        if (!raw.trim()) {
+            el.detailContent.textContent = '（无正文）';
+            el.detailContent.classList.remove('ann-detail__content--plain');
+            return;
+        }
+        if (RICH_BLOCK_TAGS.test(raw)) {
+            el.detailContent.innerHTML = sanitizeRich(raw);
+            el.detailContent.classList.remove('ann-detail__content--plain');
+        } else {
+            el.detailContent.textContent = raw;
+            el.detailContent.classList.add('ann-detail__content--plain');
+        }
+    }
+
     /** 打开只读详情：数据按 id 现取，保证看到的是最新内容。 */
     function openDetail(id) {
         App.get('/api/announcements/' + id).then(function (record) {
+            state.detailRecord = record;
             el.detailTitle.textContent = record.title ? String(record.title) : '公告详情';
             el.detailMeta.innerHTML = detailMetaHtml(record);
-            el.detailContent.textContent = record.content ? String(record.content) : '（无正文）';
+            renderContent(record.content);
             el.detailAttachment.innerHTML = detailAttachmentHtml(record);
             el.detailModal.hidden = false;
         }).catch(function (error) {
@@ -223,22 +391,45 @@
         el.detailModal.hidden = true;
     }
 
+    /**
+     * 详情 → 编辑：关闭详情、打开编辑弹窗并回填正文。
+     *
+     * <p>复用详情已经取到的那条数据（刚展示给用户的正是它），不再多打一次请求。
+     */
+    function editFromDetail() {
+        var record = state.detailRecord;
+        if (!record) {
+            return;
+        }
+        closeDetail();
+        openModal(record);
+    }
+
     function submitForm(event) {
         event.preventDefault();
 
-        var payload = {
-            title: fieldValue('title'),
-            content: fieldValue('content'),
-            attachment: fieldValue('attachment') || null
-        };
-        if (!payload.title) {
+        var content = getEditorContent();
+        var title = fieldValue('title');
+        if (!title) {
             el.error.textContent = '请填写公告标题';
             return;
         }
-        if (!payload.content) {
+        if (!content) {
             el.error.textContent = '请填写公告内容';
             return;
         }
+        // 字数按纯文字算（不含排版标记），与服务端校验口径一致
+        var plainLength = quill ? quill.getText().trim().length : 0;
+        if (plainLength > MAX_CONTENT_TEXT_LENGTH) {
+            el.error.textContent = '正文最长 ' + MAX_CONTENT_TEXT_LENGTH + ' 字，当前 ' + plainLength + ' 字';
+            return;
+        }
+
+        var payload = {
+            title: title,
+            content: content,
+            attachment: fieldValue('attachment') || null
+        };
 
         var editingId = state.editingId;
         // 新建时按按钮决定保存为草稿还是直接发布；编辑时不带 status，由发布/下线按钮单独控制
@@ -436,6 +627,10 @@
         bindDismiss(el.modal, closeModal);
         bindDismiss(el.detailModal, closeDetail);
 
+        if (el.btnDetailEdit) {
+            el.btnDetailEdit.addEventListener('click', editFromDetail);
+        }
+
         document.addEventListener('keydown', function (event) {
             if (event.key !== 'Escape') {
                 return;
@@ -450,6 +645,7 @@
         });
     }
 
+    initEditor();
     bindEvents();
     loadList();
 })(window, document);

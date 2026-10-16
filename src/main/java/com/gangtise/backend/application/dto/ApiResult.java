@@ -20,6 +20,8 @@ public class ApiResult<T> {
     public static final int CODE_BAD_REQUEST = 400;
     /** 未登录或登录态已失效。 */
     public static final int CODE_UNAUTHORIZED = 401;
+    /** 已识别来源但无权访问（如打卡接口的来源不在允许网段内）。 */
+    public static final int CODE_FORBIDDEN = 403;
     /** 服务端异常。 */
     public static final int CODE_SERVER_ERROR = 500;
 

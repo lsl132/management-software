@@ -409,7 +409,9 @@ code {
 
 .table th,
 .table td {
-    padding: 12px 14px;
+    /* 左右 12px：公告页列多（8 列），每列少 4px 合计省出约 32px，
+       正好让「标题 + 摘要」列能容下全库最长的标题而不必截断 */
+    padding: 12px;
     border-bottom: 1px solid var(--color-border);
     text-align: left;
 }
@@ -438,6 +440,31 @@ code {
 .table__actions {
     display: flex;
     gap: 8px;
+}
+
+/* 操作列吸附在表格右侧。
+   列表列多时（公告页 1380px > 容器 1124px）最后一列会被 overflow-x 裁到可视区之外，
+   「编辑/删除」等按钮看不见也点不到（实测过 4 个按钮全部不可见）。用 sticky 把它钉在右边，
+   不溢出时贴合原位、视觉零变化，溢出时也不会被滚走。
+   - 排除 colspan 的空态行，否则「暂无数据」会变成一条黏在右侧的窄条
+   - 单元格自带背景，否则横向滚过的内容会从按钮底下透出来
+   - 左侧一道渐隐阴影，提示右边还有内容被滚过去 */
+.table-wrap .table th:last-child,
+.table-wrap .table td:last-child:not(.table__empty) {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--color-surface);
+    box-shadow: -8px 0 8px -8px rgba(24, 39, 75, 0.18);
+}
+
+.table-wrap .table thead th:last-child {
+    z-index: 2;
+    background: #f8fafc;
+}
+
+.table-wrap .table tbody tr:hover td:last-child {
+    background: #fafbfe;
 }
 
 /* ---------------------------------------------------------------- 徽标 */
@@ -923,23 +950,66 @@ textarea.field__input {
 
 /* ------------------------------------------------------ 公告管理页扩展 */
 
-/* 标题列：主标题 + 灰色摘要两行，避免把长正文塞进表格 */
+/* 标题列：主标题 + 灰色摘要两行，避免把长正文塞进表格。
+   整个 .ann-cell 限宽——表格总宽是被「标题 + 40 字摘要」这一列撑出来的（不限宽实测 538px），
+   不限宽时整表 1380 > 容器 1124，右侧「创建时间」会被吸附的操作列压掉一截。
+   实测全库最长标题（23 字）渲染宽 311px，取 318px 留余量：既收掉溢出，
+   又不截断任何标题。摘要超出走省略号，完整文字挂在 title 上悬浮可见。 */
+.ann-cell {
+    max-width: 318px;
+}
+
+.ann-cell__title,
+.ann-cell__summary {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .ann-cell__title {
     font-weight: 600;
     color: var(--color-text);
 }
 
 .ann-cell__summary {
-    display: block;
     margin-top: 2px;
     color: var(--color-text-muted);
     font-size: 12.5px;
 }
 
-/* 公告正文输入区：正文通常较长，给足高度 */
-.ann-form__content {
-    min-height: 180px;
-    line-height: 1.6;
+/* 公告正文编辑器：Quill（snow 主题）挂载点，边框/圆角/字号与其它表单控件对齐 */
+.ann-editor .ql-toolbar.ql-snow {
+    border: 1px solid var(--color-border);
+    border-bottom: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    background: #f8fafc;
+}
+
+.ann-editor .ql-container.ql-snow {
+    border: 1px solid var(--color-border);
+    border-radius: 0 0 var(--radius) var(--radius);
+    /* 固定高度：编辑器在 hidden 弹窗里初始化，靠显式高度避免测量出错 */
+    height: 220px;
+    background: var(--color-surface);
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.ann-editor .ql-editor {
+    line-height: 1.75;
+    min-height: 100%;
+}
+
+.ann-editor .ql-editor.ql-blank::before {
+    color: var(--color-text-muted);
+    font-style: normal;
+}
+
+.ann-editor:focus-within .ql-toolbar.ql-snow,
+.ann-editor:focus-within .ql-container.ql-snow {
+    border-color: var(--color-primary);
 }
 
 /* 已下线状态：弱化的灰底徽标 */
@@ -1011,17 +1081,61 @@ button.ann-cell__title:hover {
     margin-top: 16px;
 }
 
-/* 正文：保留换行、长内容内部滚动，避免弹窗整体被撑爆 */
+/* 正文：长内容在弹窗内滚动，避免整体被撑爆。富文本按常规文档流排版， */
+/* 历史纯文本公告加 .ann-detail__content--plain 用 pre-wrap 保住原有换行 */
 .ann-detail__content {
     padding: 14px 16px;
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     background: var(--color-surface);
-    white-space: pre-wrap;
     word-break: break-word;
     line-height: 1.75;
     max-height: 42vh;
     overflow-y: auto;
+}
+
+.ann-detail__content--plain {
+    white-space: pre-wrap;
+}
+
+.ann-detail__content p {
+    margin: 0 0 8px;
+}
+
+.ann-detail__content p:last-child {
+    margin-bottom: 0;
+}
+
+.ann-detail__content ul,
+.ann-detail__content ol {
+    margin: 0 0 8px;
+    padding-left: 24px;
+}
+
+.ann-detail__content ul {
+    list-style: disc;
+}
+
+.ann-detail__content ol {
+    list-style: decimal;
+}
+
+.ann-detail__content li {
+    margin: 2px 0;
+}
+
+.ann-detail__content strong,
+.ann-detail__content b {
+    font-weight: 600;
+}
+
+.ann-detail__content em,
+.ann-detail__content i {
+    font-style: italic;
+}
+
+.ann-detail__content u {
+    text-decoration: underline;
 }
 
 .ann-detail__link {

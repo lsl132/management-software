@@ -277,6 +277,70 @@ class AnnouncementApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("富文本正文按白名单落库：排版标签保留，脚本与事件属性被清洗")
+    void richTextContentSanitizedOnSave() throws Exception {
+        MockHttpSession session = login();
+
+        long id = create(session, PREFIX + "富文本",
+                "<p>正文<strong>加粗</strong></p><script>alert('xss')</script>"
+                        + "<p onclick=\"steal()\">带事件属性</p>",
+                null, null);
+
+        String stored = announcementMapper.selectById(id).getContent();
+        assertEquals("<p>正文<strong>加粗</strong></p><p>带事件属性</p>", stored,
+                "白名单内的排版标签应原样保留，白名单外的标签与属性应被清洗");
+    }
+
+    @Test
+    @DisplayName("绕过页面直接提交脚本也不会入库（前端清洗挡不住这条路，靠服务端兜底）")
+    void scriptContentStrippedServerSide() throws Exception {
+        MockHttpSession session = login();
+
+        long id = create(session, PREFIX + "直接提交脚本",
+                "<p>正常正文</p><img src=x onerror=alert(1)>", null, null);
+
+        String stored = announcementMapper.selectById(id).getContent();
+        assertFalse(stored.contains("script"), "脚本标签必须被剥掉");
+        assertFalse(stored.contains("onerror"), "事件属性必须被剥掉");
+        assertFalse(stored.contains("<img"), "不在白名单的标签必须被剥掉");
+        assertTrue(stored.contains("正常正文"), "白名单内的正文要保留");
+    }
+
+    @Test
+    @DisplayName("清洗后没有实际文字的内容被拒绝")
+    void contentEmptyAfterSanitizeRejected() throws Exception {
+        MockHttpSession session = login();
+
+        mockMvc.perform(post("/api/announcements").session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", PREFIX + "空正文",
+                                "content", "<script>alert(1)</script>"))))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("公告内容不能为空"));
+    }
+
+    @Test
+    @DisplayName("正文按纯文字限长：排版标记不占字数")
+    void contentLengthCountedByPlainText() throws Exception {
+        MockHttpSession session = login();
+
+        // 20001 字：超限，即使套了标签也拒绝
+        mockMvc.perform(post("/api/announcements").session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "title", PREFIX + "超长",
+                                "content", "<p>" + "字".repeat(20001) + "</p>"))))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("公告正文最长 20000 字，当前 20001 字"));
+
+        // 纯文字正好 20000 字：标签不该把额度吃掉
+        long id = create(session, PREFIX + "临界长度",
+                "<p><strong>" + "字".repeat(20000) + "</strong></p>", null, null);
+        assertNotNull(announcementMapper.selectById(id), "纯文字 20000 字应当通过");
+    }
+
+    @Test
     @DisplayName("公告管理页正常渲染")
     void pageRenders() throws Exception {
         MockHttpSession session = login();
@@ -285,11 +349,26 @@ class AnnouncementApiTest extends ApiTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("公告管理")))
                 .andExpect(content().string(containsString("/js/announcements.js")))
+                // 富文本：编辑器挂载点 + 本地内置的编辑器资源（不依赖外网）
+                .andExpect(content().string(containsString("id=\"contentEditor\"")))
+                .andExpect(content().string(containsString("/vendor/quill/quill.js")))
+                .andExpect(content().string(containsString("/vendor/quill/quill.snow.css")))
+                .andExpect(content().string(containsString("/vendor/dompurify/purify.min.js")))
                 // 只读详情弹窗：列表里看不到正文，必须能打开详情查看
                 .andExpect(content().string(containsString("id=\"announcementDetailModal\"")))
                 .andExpect(content().string(containsString("id=\"announcementDetailContent\"")))
                 .andExpect(content().string(containsString("id=\"announcementDetailAttachment\"")))
-                .andExpect(content().string(containsString("公告详情")));
+                .andExpect(content().string(containsString("公告详情")))
+                // 详情底部要有「编辑」，从详情能直接进编辑（列表操作列在窄屏会被横向滚动藏起来）
+                .andExpect(content().string(containsString("id=\"btnDetailEdit\"")));
+    }
+
+    @Test
+    @DisplayName("编辑器静态资源属于放行目录（未登录也能取到，页面才能正常加载）")
+    void editorAssetsArePublic() throws Exception {
+        mockMvc.perform(get("/vendor/quill/quill.js")).andExpect(status().isOk());
+        mockMvc.perform(get("/vendor/quill/quill.snow.css")).andExpect(status().isOk());
+        mockMvc.perform(get("/vendor/dompurify/purify.min.js")).andExpect(status().isOk());
     }
 
     /* ------------------------------------------------------------------ 工具 */

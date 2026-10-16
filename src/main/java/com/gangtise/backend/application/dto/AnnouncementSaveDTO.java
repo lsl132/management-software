@@ -13,6 +13,9 @@ import lombok.Data;
  *
  * <p>状态语义：新建时可为空（按草稿处理）；修改时为空表示**不变更状态**
  * （发布 / 下线请走 {@code POST /api/announcements/{id}/publish|offline}）。
+ *
+ * <p>{@code content} 是**富文本 HTML**（Quill 产出）：这里的长度上限只是防滥用的粗筛，
+ * 真正的产品约束「纯文字不超过 20000 字」由 {@code AnnouncementService} 清洗后按纯文字判断。
  */
 @Data
 public class AnnouncementSaveDTO {
@@ -22,7 +25,7 @@ public class AnnouncementSaveDTO {
     private String title;
 
     @NotBlank(message = "不能为空")
-    @Size(max = 20000, message = "长度不能超过 20000")
+    @Size(max = 100000, message = "长度不能超过 100000")
     private String content;
 
     /** 附件路径或 URL，可为空表示无附件。 */

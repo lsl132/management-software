@@ -228,7 +228,8 @@
             return;
         }
         el.announcementList.innerHTML = list.map(function (item) {
-            var summary = item.content ? String(item.content) : '';
+            // 正文现在可能是富文本：摘要必须先转纯文本，否则标签会跟着被截断显示出来
+            var summary = App.htmlToText(item.content);
             if (summary.length > 48) {
                 summary = summary.slice(0, 48) + '…';
             }
