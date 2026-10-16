@@ -6,6 +6,9 @@ import lombok.Data;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+/**
+ * 流程节点
+ */
 @Data
 @TableName("workflow_node")
 public class WorkflowNode implements Serializable {
@@ -17,6 +20,8 @@ public class WorkflowNode implements Serializable {
     private Integer id;
     //流程关联ID
     private Integer workflowId;
+    //节点排序
+    private Integer sort;
     //节点名称
     private String nodeName;
     //节点类型 0起始节点，1审批节点，2结束节点
@@ -27,7 +32,6 @@ public class WorkflowNode implements Serializable {
     private String approvalValues;
     //审批模式：1或签（一人通过即生效） 2会签（全员通过才生效）
     private Integer approvalMode;
-
     //创建时间
     @TableField(value = "update_time", fill = FieldFill.INSERT)
     private LocalDateTime updateTime;

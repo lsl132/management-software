@@ -7,10 +7,14 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
-
+/**
+ * 工单
+ * @author gangtise
+ * @since 2026-06-05
+ */
 @Data
-@TableName("workflow_instance")
-public class WorkflowInstance implements Serializable {
+@TableName("work_order")
+public class WorkOrder implements Serializable {
 
     private static final long serialVersionUID = 1L;
     //自增数据

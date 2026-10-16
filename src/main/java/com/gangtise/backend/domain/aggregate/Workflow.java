@@ -6,6 +6,9 @@ import lombok.Data;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+/**
+ * 流程
+ */
 @Data
 @TableName("workflow")
 public class Workflow  implements Serializable {

@@ -8,15 +8,19 @@ import lombok.Data;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
+/**
+ * 工单活动记录
+ * @author gangtise
+ */
 @Data
-@TableName("workflow_node")
-public class WorkflowInstanceActivity implements Serializable {
+@TableName("work_order_activity")
+public class WorkOrderActivity implements Serializable {
 
     private static final long serialVersionUID = 1L;
     //自增id
     private Long id;
-    //Workflow 关联id
-    private Integer workflowId;
+    //工单ID
+    private Integer workOrderId;
     //WorkflowNode 关联id
     private Integer nodeId;
     //workflowNode 快照数据
