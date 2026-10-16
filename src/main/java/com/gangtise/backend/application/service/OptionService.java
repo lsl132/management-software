@@ -3,18 +3,22 @@ package com.gangtise.backend.application.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.gangtise.backend.application.dto.SelectOption;
 import com.gangtise.backend.domain.aggregate.Role;
+import com.gangtise.backend.domain.aggregate.User;
 import com.gangtise.backend.domain.aggregate.entity.DepartmentRank;
 import com.gangtise.backend.infrastructure.enums.AnnouncementStatusEnum;
 import com.gangtise.backend.infrastructure.enums.AuthorityTypeEnum;
+import com.gangtise.backend.infrastructure.enums.CurrencyEnum;
 import com.gangtise.backend.infrastructure.enums.EmployeeEducationEnum;
 import com.gangtise.backend.infrastructure.enums.EmployeeStatusEnum;
 import com.gangtise.backend.infrastructure.enums.GenderEnum;
 import com.gangtise.backend.infrastructure.enums.RankTypeEnum;
 import com.gangtise.backend.infrastructure.enums.RoleStatusEnum;
 import com.gangtise.backend.infrastructure.enums.UserStatusEnum;
+import com.gangtise.backend.infrastructure.enums.WorkflowStatusEnum;
 import com.gangtise.backend.infrastructure.repository.mapper.DepartmentMapper;
 import com.gangtise.backend.infrastructure.repository.mapper.DepartmentRankMapper;
 import com.gangtise.backend.infrastructure.repository.mapper.RoleMapper;
+import com.gangtise.backend.infrastructure.repository.mapper.UserMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
@@ -29,13 +33,16 @@ public class OptionService {
     private final DepartmentMapper departmentMapper;
     private final DepartmentRankMapper departmentRankMapper;
     private final RoleMapper roleMapper;
+    private final UserMapper userMapper;
 
     public OptionService(DepartmentMapper departmentMapper,
                          DepartmentRankMapper departmentRankMapper,
-                         RoleMapper roleMapper) {
+                         RoleMapper roleMapper,
+                         UserMapper userMapper) {
         this.departmentMapper = departmentMapper;
         this.departmentRankMapper = departmentRankMapper;
         this.roleMapper = roleMapper;
+        this.userMapper = userMapper;
     }
 
     public List<SelectOption> departments() {
@@ -103,6 +110,21 @@ public class OptionService {
                 .toList();
     }
 
+    /**
+     * 审批人选项（系统账号），供流程管理的审批节点选人使用。
+     *
+     * <p><b>只列正常状态的账号</b>：冻结的账号连登录都过不去，把它选成审批人等于把这条流程卡死
+     * ——规则配好了却没有人能点通过。已经配在规则里的历史 id 不会被这里过滤掉，
+     * 展示层会原样显示（必要时保留 {@code #id}），改名或冻结不会让规则内容凭空消失。
+     */
+    public List<SelectOption> users() {
+        return userMapper.selectList(Wrappers.<User>lambdaQuery()
+                        .eq(User::getStatus, UserStatusEnum.NORMAL.getValue())
+                        .orderByAsc(User::getId)).stream()
+                .map(user -> SelectOption.of(user.getId(), user.getUsername()))
+                .toList();
+    }
+
     /** 用户状态选项（正常/冻结），供用户管理页筛选使用。 */
     public List<SelectOption> userStatuses() {
         return Arrays.stream(UserStatusEnum.values())
@@ -120,6 +142,20 @@ public class OptionService {
     /** 权限类型选项（模块分组/功能页），供权限管理页筛选与表单使用。 */
     public List<SelectOption> authorityTypes() {
         return Arrays.stream(AuthorityTypeEnum.values())
+                .map(item -> SelectOption.of(item.getValue(), item.getDescription()))
+                .toList();
+    }
+
+    /** 币种选项（人民币/美元/…），供员工薪酬弹窗使用。 */
+    public List<SelectOption> currencies() {
+        return Arrays.stream(CurrencyEnum.values())
+                .map(item -> SelectOption.of(item.getValue(), item.getDescription()))
+                .toList();
+    }
+
+    /** 流程状态选项（启用/禁用），供流程管理页筛选与表单使用。 */
+    public List<SelectOption> workflowStatuses() {
+        return Arrays.stream(WorkflowStatusEnum.values())
                 .map(item -> SelectOption.of(item.getValue(), item.getDescription()))
                 .toList();
     }

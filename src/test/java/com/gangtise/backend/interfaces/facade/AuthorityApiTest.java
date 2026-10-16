@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 权限接口集成测试：权限树的万位归组 + 权限字典的增删改查与三条硬约束。
  *
- * <p>依赖 seed 权限字典（{@code docs/db/seed-authority.sql}：5 个模块分组 + 18 个功能页），
+ * <p>依赖 seed 权限字典（{@code docs/db/seed-authority.sql}：5 个模块分组 + 19 个功能页），
  * 自建的权限与角色随事务回滚；测试用的助记符统一落在 60000 段，与 seed 的 10000~50000 不重叠。
  */
 class AuthorityApiTest extends ApiTestSupport {
@@ -89,7 +89,7 @@ class AuthorityApiTest extends ApiTestSupport {
             }
         }
 
-        assertTrue(pageTotal >= 18, "seed 至少包含 18 个功能页，实际：" + pageTotal);
+        assertTrue(pageTotal >= 19, "seed 至少包含 19 个功能页，实际：" + pageTotal);
     }
 
     @Test
@@ -242,6 +242,72 @@ class AuthorityApiTest extends ApiTestSupport {
         expectCreateRejected(session, 10000, "IT-权限-重复助记符", 1, "权限助记符已存在");
         // 类型越界由 @Valid 拦下
         expectCreateRejected(session, 80000, "IT-权限-非法类型", 9, "type");
+    }
+
+    @Test
+    @DisplayName("路由：功能页可存取、留空即清空，模块分组一律不存路由")
+    void pathIsPersistedAndNormalized() throws Exception {
+        MockHttpSession session = login();
+
+        // 分组带上路由 → 服务端强制置空：分组是下拉容器、本身没有页面，
+        // 留着路由会让二级导航渲染出一个「能点但打不开」的一级入口
+        Integer groupId = createWithPath(session, GROUP_TEST, "IT-权限-路由模块", 1, "/should-be-dropped");
+        mockMvc.perform(get("/api/authorities/" + groupId).session(session))
+                .andExpect(jsonPath("$.data.path").doesNotExist());
+
+        // 功能页带上路由 → 正常存取
+        Integer pageId = createWithPath(session, PAGE_TEST, "IT-权限-路由功能页", 2, "/it-test-route");
+        mockMvc.perform(get("/api/authorities/" + pageId).session(session))
+                .andExpect(jsonPath("$.data.path").value("/it-test-route"));
+
+        // 权限树要带上路由：二级导航与权限管理页都从这一份数据取
+        JsonNode page = findGroup(tree(session), GROUP_TEST).path("children").get(0);
+        assertEquals("/it-test-route", page.path("path").asText(), "权限树节点应带上路由");
+
+        // 留空 → 清空（ALWAYS 更新策略：否则填错的路由永远删不掉，导航会一直指向错的地址）
+        mockMvc.perform(put("/api/authorities/" + pageId).session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(saveBodyWithPath(PAGE_TEST, "IT-权限-路由功能页", 2, null)))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/authorities/" + pageId).session(session))
+                .andExpect(jsonPath("$.data.path").doesNotExist());
+
+        // 空串与留空等价：库里只允许 null 一种「没有路由」，否则判空到处都要写两遍
+        mockMvc.perform(put("/api/authorities/" + pageId).session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(saveBodyWithPath(PAGE_TEST, "IT-权限-路由功能页", 2, "")))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(get("/api/authorities/" + pageId).session(session))
+                .andExpect(jsonPath("$.data.path").doesNotExist());
+
+        mockMvc.perform(delete("/api/authorities/" + pageId).session(session))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(delete("/api/authorities/" + groupId).session(session))
+                .andExpect(jsonPath("$.code").value(0));
+    }
+
+    @Test
+    @DisplayName("路由格式校验：必须 / 开头、不含空白、不超 128")
+    void pathFormatIsValidated() throws Exception {
+        MockHttpSession session = login();
+        Integer groupId = create(session, GROUP_TEST, "IT-权限-路由校验模块", 1, null);
+
+        // 相对路径：会跟着当前页 URL 变，同一个菜单项在不同页面点开跳到不同地方
+        expectCreateRejected(session, PAGE_TEST, 2, "employees", "必须以 / 开头");
+        // 含空白
+        expectCreateRejected(session, PAGE_TEST, 2, "/a b", "不能包含空白");
+        // 超长（1 个 / 加 128 个字符 = 129 > 128）
+        expectCreateRejected(session, PAGE_TEST, 2, "/" + "a".repeat(128), "长度不能超过 128");
+
+        // 合法路由可以建出来，并能从详情读回
+        Integer pageId = createWithPath(session, PAGE_TEST, "IT-权限-路由合法", 2, "/it-ok");
+        mockMvc.perform(get("/api/authorities/" + pageId).session(session))
+                .andExpect(jsonPath("$.data.path").value("/it-ok"));
+
+        mockMvc.perform(delete("/api/authorities/" + pageId).session(session))
+                .andExpect(jsonPath("$.code").value(0));
+        mockMvc.perform(delete("/api/authorities/" + groupId).session(session))
+                .andExpect(jsonPath("$.code").value(0));
     }
 
     @Test
@@ -399,6 +465,36 @@ class AuthorityApiTest extends ApiTestSupport {
         mockMvc.perform(post("/api/authorities").session(session)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(saveBody(mnemonic, name, type, null)))
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message", containsString(expectMessage)));
+    }
+
+    /** 带路由的请求体；说明固定留空，只关心路由这一个字段。 */
+    private String saveBodyWithPath(int mnemonic, String authName, int type, String path) throws Exception {
+        Map<String, Object> body = new HashMap<>();
+        body.put("mnemonic", mnemonic);
+        body.put("authName", authName);
+        body.put("type", type);
+        body.put("path", path);
+        return objectMapper.writeValueAsString(body);
+    }
+
+    private Integer createWithPath(MockHttpSession session, int mnemonic, String name,
+                                   int type, String path) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/authorities").session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(saveBodyWithPath(mnemonic, name, type, path)))
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn();
+        return readJson(result).path("data").asInt();
+    }
+
+    /** 路由格式非法时的统一断言入口（与按名称的重载区分：这里第 4 个参数是路由）。 */
+    private void expectCreateRejected(MockHttpSession session, int mnemonic,
+                                      int type, String path, String expectMessage) throws Exception {
+        mockMvc.perform(post("/api/authorities").session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(saveBodyWithPath(mnemonic, "IT-权限-路由非法", type, path)))
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message", containsString(expectMessage)));
     }

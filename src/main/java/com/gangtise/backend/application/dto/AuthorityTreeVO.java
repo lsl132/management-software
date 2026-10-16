@@ -21,6 +21,9 @@ public class AuthorityTreeVO {
     private Integer type;
     private String typeText;
 
+    /** 功能页路由（如 /employees）；为空表示尚未实现，二级导航里置灰。模块分组恒为空。 */
+    private String path;
+
     /** 该分组下的功能页，按助记符升序。 */
     private List<AuthorityTreeVO> children;
 

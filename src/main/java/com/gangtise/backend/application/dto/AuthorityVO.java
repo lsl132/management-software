@@ -19,6 +19,9 @@ public class AuthorityVO {
     /** 类型描述（模块分组 / 功能页），由 AuthorityTypeEnum 转换。 */
     private String typeText;
 
+    /** 功能页路由（如 /employees）；为空表示尚未实现，二级导航里置灰。模块分组恒为空。 */
+    private String path;
+
     /** 该权限所属模块分组的助记符（分组自身即返回自己），由助记符万位推导。 */
     private Integer groupMnemonic;
 

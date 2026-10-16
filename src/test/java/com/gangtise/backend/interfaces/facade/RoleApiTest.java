@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 角色管理接口集成测试。
  *
- * <p>依赖 seed 权限字典（{@code docs/db/seed-authority.sql}：5 个模块分组 + 18 个功能页），
+ * <p>依赖 seed 权限字典（{@code docs/db/seed-authority.sql}：5 个模块分组 + 19 个功能页），
  * 只读取不修改；自建的角色与挂载关系随事务回滚。
  */
 class RoleApiTest extends ApiTestSupport {
@@ -176,7 +176,7 @@ class RoleApiTest extends ApiTestSupport {
         Integer roleId = create(session, PREFIX + "覆盖");
 
         saveAuthorities(session, roleId, List.of(GROUP_SYSTEM));
-        assertEquals(5, authorities(roleId).size(), "系统设置分组 + 4 个功能页");
+        assertEquals(6, authorities(roleId).size(), "系统设置分组 + 5 个功能页");
 
         saveAuthorities(session, roleId, List.of(PAGE_EMPLOYEE));
         List<Integer> saved = authorities(roleId);

@@ -354,6 +354,51 @@
         });
     });
 
+    /* ------------------------------------------------------ 顶部二级导航 */
+
+    /**
+     * 一级菜单（模块分组）的点击展开 / 收起。
+     *
+     * <p>CSS 已用 {@code :hover} / {@code :focus-within} 覆盖桌面悬停与键盘 Tab，
+     * 这里补的是触屏：iOS Safari 点 {@code <button>} 不会给它焦点，只靠 CSS 打不开下拉。
+     * 另外点了别处或按 Esc 必须收起，否则浮层会一直挂在页面上挡住内容。
+     */
+    (function bindNavMenus() {
+        var items = Array.prototype.slice.call(document.querySelectorAll('.nav__item'));
+        if (items.length === 0) {
+            return;
+        }
+
+        function closeAll() {
+            items.forEach(function (item) {
+                item.classList.remove('is-open');
+            });
+        }
+
+        items.forEach(function (item) {
+            var trigger = item.querySelector('.nav__link--group');
+            if (!trigger) {
+                return;
+            }
+            trigger.addEventListener('click', function (event) {
+                // 阻止冒泡到下面的 document 监听，否则刚打开就被自己关掉
+                event.stopPropagation();
+                var willOpen = !item.classList.contains('is-open');
+                closeAll();
+                if (willOpen) {
+                    item.classList.add('is-open');
+                }
+            });
+        });
+
+        document.addEventListener('click', closeAll);
+        document.addEventListener('keydown', function (event) {
+            if (event.key === 'Escape') {
+                closeAll();
+            }
+        });
+    })();
+
     window.App = {
         request: request,
         get: function (url) {

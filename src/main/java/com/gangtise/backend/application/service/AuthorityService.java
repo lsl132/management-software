@@ -43,6 +43,9 @@ import java.util.stream.Collectors;
  *   <li><b>删除要有保护</b>：被任意角色引用、或（分组）其下还有功能页时拒绝删除，
  *       与部门/职级/角色的删除保护保持一致。</li>
  * </ol>
+ *
+ * <p>{@code path} 是功能页在二级导航里的跳转地址：可空，为空表示该功能页尚未实现（菜单里置灰不可点）。
+ * 模块分组是下拉容器、本身没有页面，服务端一律把分组的路由归一成 null，不依赖调用方自觉。
  */
 @Service
 public class AuthorityService {
@@ -188,6 +191,7 @@ public class AuthorityService {
         vo.setDescription(authority.getDescription());
         vo.setType(authority.getType());
         vo.setTypeText(AuthorityTypeEnum.descriptionOf(authority.getType()));
+        vo.setPath(authority.getPath());
         vo.setGroupMnemonic(groupMnemonicOf(authority.getMnemonic()));
         vo.setChildCount(AuthorityTypeEnum.isGroup(authority.getType())
                 ? (int) countChildren(authority.getMnemonic()) : 0);
@@ -215,9 +219,10 @@ public class AuthorityService {
         authority.setAuthName(dto.getAuthName().trim());
         authority.setDescription(trimToNull(dto.getDescription()));
         authority.setType(type);
+        authority.setPath(normalizePath(type, dto.getPath()));
         authorityMapper.insert(authority);
-        log.info("[AUTHORITY] 新增权限 -> id={}, mnemonic={}, type={}, name={}",
-                authority.getId(), mnemonic, type, authority.getAuthName());
+        log.info("[AUTHORITY] 新增权限 -> id={}, mnemonic={}, type={}, name={}, path={}",
+                authority.getId(), mnemonic, type, authority.getAuthName(), authority.getPath());
         return authority.getId();
     }
 
@@ -256,7 +261,8 @@ public class AuthorityService {
                 .set(Authority::getMnemonic, newMnemonic)
                 .set(Authority::getAuthName, dto.getAuthName().trim())
                 .set(Authority::getDescription, trimToNull(dto.getDescription()))
-                .set(Authority::getType, newType));
+                .set(Authority::getType, newType)
+                .set(Authority::getPath, normalizePath(newType, dto.getPath())));
 
         if (mnemonicChanged) {
             int moved = roleAuthorityMapper.update(null, Wrappers.<RoleAuthority>lambdaUpdate()
@@ -265,8 +271,8 @@ public class AuthorityService {
             log.info("[AUTHORITY] 修改权限助记符 -> id={}, {} -> {}，已同步 {} 条角色授权",
                     id, oldMnemonic, newMnemonic, moved);
         } else {
-            log.info("[AUTHORITY] 修改权限 -> id={}, mnemonic={}, name={}", id, newMnemonic,
-                    dto.getAuthName().trim());
+            log.info("[AUTHORITY] 修改权限 -> id={}, mnemonic={}, name={}, path={}", id, newMnemonic,
+                    dto.getAuthName().trim(), normalizePath(newType, dto.getPath()));
         }
     }
 
@@ -358,6 +364,7 @@ public class AuthorityService {
         vo.setDescription(authority.getDescription());
         vo.setType(authority.getType());
         vo.setTypeText(AuthorityTypeEnum.descriptionOf(authority.getType()));
+        vo.setPath(authority.getPath());
         vo.setRoleCount(roleCounts.getOrDefault(authority.getMnemonic(), 0L).intValue());
         vo.setChildren(new ArrayList<>());
         return vo;
@@ -369,6 +376,24 @@ public class AuthorityService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * 归一功能页路由。
+     *
+     * <p>两条规则：
+     * <ul>
+     *   <li><b>模块分组恒置空</b>：分组是下拉容器、本身没有页面，留着路由会让菜单渲染出一个
+     *       既能点又无页面的入口；这里强制清掉，而不是指望前端不填；</li>
+     *   <li><b>空白等同未填</b>：前端提交 {@code ""} 与不提交一个意思，统一成 null，
+     *       否则库里会同时存在 null 与 "" 两种「没有路由」，判空到处都要写两遍。</li>
+     * </ul>
+     */
+    private static String normalizePath(Integer type, String path) {
+        if (AuthorityTypeEnum.isGroup(type)) {
+            return null;
+        }
+        return trimToNull(path);
     }
 
 }

@@ -150,6 +150,27 @@ class EmployeeApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.data.records.length()").value(1));
     }
 
+    /**
+     * 分页计数必须是 JSON 数字，不能是字符串。
+     *
+     * <p>全局 Jackson 策略把 Long/long 统一序列化成字符串（防雪花 ID 丢精度），分页计数恰好是原生 long，
+     * 一旦被牵连成 {@code "current":"1"}，前端 {@code state.current + 1} 就成了字符串拼接，
+     * 点「下一页」会请求 {@code current=11}。这条测试把这个类型契约钉死在接口上。
+     */
+    @Test
+    @DisplayName("分页计数字段以 JSON 数字下发，不是字符串")
+    void pageCountersAreJsonNumbers() throws Exception {
+        MockHttpSession session = login();
+
+        mockMvc.perform(get("/api/employees").session(session)
+                        .param("current", "1")
+                        .param("size", "10"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.total").isNumber())
+                .andExpect(jsonPath("$.data.current").isNumber())
+                .andExpect(jsonPath("$.data.size").isNumber());
+    }
+
     @Test
     @DisplayName("未登录不能操作员工数据")
     void requiresLogin() throws Exception {

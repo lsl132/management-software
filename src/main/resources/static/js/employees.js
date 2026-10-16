@@ -14,8 +14,13 @@
         status: '',
         total: 0,
         loadedCount: 0,
-        editingId: null
+        editingId: null,
+        salaryEmployeeId: null
     };
+
+    /** 薪酬换算基准：年薪按 12 个月，日薪按月计薪天数 21.75（法定标准）折算。 */
+    var MONTHS_PER_YEAR = 12;
+    var MONTH_WORKING_DAYS = 21.75;
 
     var el = {
         body: document.getElementById('employeeBody'),
@@ -36,7 +41,18 @@
         formError: document.getElementById('formError'),
         btnSubmit: document.getElementById('btnSubmit'),
         department: document.getElementById('department'),
-        rank: document.getElementById('rank')
+        rank: document.getElementById('rank'),
+        salaryModal: document.getElementById('salaryModal'),
+        salaryModalTitle: document.getElementById('salaryModalTitle'),
+        salaryForm: document.getElementById('salaryForm'),
+        salaryFormError: document.getElementById('salaryFormError'),
+        salaryAudit: document.getElementById('salaryAudit'),
+        salaryCreateTime: document.getElementById('salaryCreateTime'),
+        salaryCurrency: document.getElementById('salaryCurrency'),
+        salaryMonth: document.getElementById('salaryMonth'),
+        salaryYear: document.getElementById('salaryYear'),
+        salaryDay: document.getElementById('salaryDay'),
+        btnSalarySubmit: document.getElementById('btnSalarySubmit')
     };
 
     /* ------------------------------------------------------------ 列表渲染 */
@@ -72,6 +88,9 @@
                 + '<td>' + App.dash(App.formatDateTime(row.updateTime)) + '</td>'
                 + '<td><div class="table__actions">'
                 + '<button type="button" class="btn btn--sm" data-edit="' + row.id + '">编辑</button>'
+                + '<button type="button" class="btn btn--sm" data-salary="' + row.id + '"'
+                + ' data-work-no="' + App.escapeHtml(row.workNo) + '"'
+                + ' data-name="' + App.escapeHtml(row.name) + '">薪酬</button>'
                 + '<button type="button" class="btn btn--sm btn--danger" data-remove="' + row.id + '">删除</button>'
                 + '</div></td>'
                 + '</tr>';
@@ -104,9 +123,12 @@
 
         el.body.innerHTML = '<tr><td colspan="11" class="table__empty">正在加载…</td></tr>';
         App.get('/api/employees?' + params.toString()).then(function (data) {
-            state.total = data.total;
-            state.current = data.current;
-            state.size = data.size;
+            // 分页计数一律显式转成数字：报文里若是字符串（全局 Long -> String 策略的连带影响），
+            // state.current + 1 会变成字符串拼接（"1" + 1 === "11"），点「下一页」会直接跳到第 11 页。
+            // 上一页用的是减号（"2" - 1 === 1），不会暴露这个问题——只有下一页会坏
+            state.total = Number(data.total);
+            state.current = Number(data.current);
+            state.size = Number(data.size);
             state.loadedCount = data.records ? data.records.length : 0;
             renderRows(data.records);
             renderPager();
@@ -203,6 +225,139 @@
 
     function showFormError(message) {
         el.formError.textContent = message || '';
+    }
+
+    /* ------------------------------------------------------------- 薪酬弹窗 */
+
+    /** 金额取两位小数。直接乘除会留出 459.77000000000004 这类浮点尾巴。 */
+    function round2(value) {
+        return Math.round((value + Number.EPSILON) * 100) / 100;
+    }
+
+    /**
+     * 月薪是换算基准：改月薪即刷新年薪（×12）与日薪（÷21.75）。
+     *
+     * <p>这两个值刷出来后仍可手工修改（表单上的说明写明了这件事）——现实中年薪常含年终奖，
+     * 不等于月薪 × 12，所以不做「三者必须自洽」的校验。
+     */
+    function syncDerivedAmounts() {
+        var raw = el.salaryMonth.value;
+        var month = Number(raw);
+        if (raw === '' || isNaN(month) || month < 0) {
+            return;
+        }
+        el.salaryYear.value = round2(month * MONTHS_PER_YEAR).toFixed(2);
+        el.salaryDay.value = round2(month / MONTH_WORKING_DAYS).toFixed(2);
+    }
+
+    function showSalaryError(message) {
+        el.salaryFormError.textContent = message || '';
+    }
+
+    function renderSalaryAudit(record) {
+        if (!record) {
+            el.salaryAudit.textContent = '尚未设置过薪酬，保存后即生效。';
+            el.salaryCreateTime.textContent = '尚未设置';
+            return;
+        }
+        el.salaryAudit.textContent = '最后修改：' + App.dash(App.formatDateTime(record.updateTime))
+            + (record.updateBy ? ' · ' + record.updateBy : '');
+        el.salaryCreateTime.textContent = App.dash(App.formatDateTime(record.createTime));
+    }
+
+    /**
+     * 打开薪酬弹窗。
+     *
+     * @param employeeId 员工主键
+     * @param workNo     工号，仅用于标题回显
+     * @param name       姓名，仅用于标题回显
+     */
+    function openSalaryModal(employeeId, workNo, name) {
+        state.salaryEmployeeId = employeeId;
+        el.salaryModalTitle.textContent = '员工薪酬 ·' + (name ? ' ' + name : '') + (workNo ? '（' + workNo + '）' : '');
+        showSalaryError('');
+        el.salaryAudit.textContent = '加载中…';
+        el.salaryCreateTime.textContent = '';
+        el.salaryCurrency.value = 'CNY';
+        el.salaryMonth.value = '';
+        el.salaryYear.value = '';
+        el.salaryDay.value = '';
+
+        el.salaryModal.hidden = false;
+
+        App.get('/api/employees/' + employeeId + '/salary').then(function (record) {
+            if (record) {
+                el.salaryCurrency.value = record.currency || 'CNY';
+                el.salaryMonth.value = Number(record.monthSalary).toFixed(2);
+                el.salaryYear.value = Number(record.yearSalary).toFixed(2);
+                el.salaryDay.value = Number(record.daySalary).toFixed(2);
+            } else {
+                // 尚未设置：预填 0 而不是留空，保存时不必再猜「空」是 0 还是没填
+                el.salaryMonth.value = '0.00';
+                el.salaryYear.value = '0.00';
+                el.salaryDay.value = '0.00';
+            }
+            renderSalaryAudit(record);
+            el.salaryMonth.focus();
+        }).catch(function (error) {
+            renderSalaryAudit(null);
+            showSalaryError(error.message || '薪酬加载失败');
+        });
+    }
+
+    function closeSalaryModal() {
+        el.salaryModal.hidden = true;
+        state.salaryEmployeeId = null;
+        showSalaryError('');
+    }
+
+    /** 读取金额输入：空按 0 处理（0 表示该项不适用），非数字或负数给友好提示。 */
+    function amountOf(id, label) {
+        var raw = String(document.getElementById(id).value).trim();
+        if (raw === '') {
+            return 0;
+        }
+        var value = Number(raw);
+        if (isNaN(value) || !isFinite(value)) {
+            throw new Error('「' + label + '」请填写数字');
+        }
+        if (value < 0) {
+            throw new Error('「' + label + '」不能为负数');
+        }
+        return value;
+    }
+
+    function submitSalary(event) {
+        event.preventDefault();
+
+        var employeeId = state.salaryEmployeeId;
+        if (!employeeId) {
+            return;
+        }
+
+        var payload;
+        try {
+            payload = {
+                currency: el.salaryCurrency.value,
+                monthSalary: amountOf('salaryMonth', '月薪'),
+                yearSalary: amountOf('salaryYear', '年薪'),
+                daySalary: amountOf('salaryDay', '日薪')
+            };
+        } catch (error) {
+            showSalaryError(error.message);
+            return;
+        }
+
+        showSalaryError('');
+        el.btnSalarySubmit.disabled = true;
+        App.put('/api/employees/' + employeeId + '/salary', payload).then(function () {
+            closeSalaryModal();
+            App.toast('薪酬已保存', 'ok');
+        }).catch(function (error) {
+            showSalaryError(error.message || '保存失败');
+        }).then(function () {
+            el.btnSalarySubmit.disabled = false;
+        });
     }
 
     /* ---------------------------------------------------------------- 提交 */
@@ -364,6 +519,14 @@
                 });
                 return;
             }
+            var salaryBtn = target.closest('[data-salary]');
+            if (salaryBtn) {
+                openSalaryModal(
+                    Number(salaryBtn.getAttribute('data-salary')),
+                    salaryBtn.getAttribute('data-work-no') || '',
+                    salaryBtn.getAttribute('data-name') || '');
+                return;
+            }
             var removeBtn = target.closest('[data-remove]');
             if (removeBtn) {
                 var row = removeBtn.closest('tr');
@@ -382,8 +545,26 @@
             }
         });
 
+        // 薪酬弹窗：月薪变化即换算（input 覆盖键入与上下箭头，change 覆盖粘贴与清空）
+        el.salaryForm.addEventListener('submit', submitSalary);
+        el.salaryMonth.addEventListener('input', syncDerivedAmounts);
+        el.salaryMonth.addEventListener('change', syncDerivedAmounts);
+
+        el.salaryModal.addEventListener('click', function (event) {
+            var target = event.target;
+            if (target.closest && target.closest('[data-close]')) {
+                closeSalaryModal();
+            }
+        });
+
         document.addEventListener('keydown', function (event) {
-            if (event.key === 'Escape' && !el.modal.hidden) {
+            if (event.key !== 'Escape') {
+                return;
+            }
+            // 两个弹窗各自判断自己的显隐，不做「谁叠在谁上面」的假设
+            if (!el.salaryModal.hidden) {
+                closeSalaryModal();
+            } else if (!el.modal.hidden) {
                 closeModal();
             }
         });

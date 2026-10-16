@@ -1,6 +1,7 @@
 package com.gangtise.backend.application.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.gangtise.backend.application.dto.EmployeeQueryDTO;
 import com.gangtise.backend.application.dto.EmployeeSaveDTO;
@@ -9,6 +10,7 @@ import com.gangtise.backend.application.dto.PageResult;
 import com.gangtise.backend.domain.aggregate.Department;
 import com.gangtise.backend.domain.aggregate.Employee;
 import com.gangtise.backend.domain.aggregate.entity.DepartmentRank;
+import com.gangtise.backend.domain.aggregate.entity.EmployeeSalary;
 import com.gangtise.backend.infrastructure.enums.EmployeeEducationEnum;
 import com.gangtise.backend.infrastructure.enums.EmployeeStatusEnum;
 import com.gangtise.backend.infrastructure.enums.GenderEnum;
@@ -16,6 +18,7 @@ import com.gangtise.backend.infrastructure.exception.BizException;
 import com.gangtise.backend.infrastructure.repository.mapper.DepartmentMapper;
 import com.gangtise.backend.infrastructure.repository.mapper.EmployeeMapper;
 import com.gangtise.backend.infrastructure.repository.mapper.DepartmentRankMapper;
+import com.gangtise.backend.infrastructure.repository.mapper.EmployeeSalaryMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -36,13 +39,16 @@ public class EmployeeService {
     private final EmployeeMapper employeeMapper;
     private final DepartmentMapper departmentMapper;
     private final DepartmentRankMapper departmentRankMapper;
+    private final EmployeeSalaryMapper employeeSalaryMapper;
 
     public EmployeeService(EmployeeMapper employeeMapper,
                            DepartmentMapper departmentMapper,
-                           DepartmentRankMapper departmentRankMapper) {
+                           DepartmentRankMapper departmentRankMapper,
+                           EmployeeSalaryMapper employeeSalaryMapper) {
         this.employeeMapper = employeeMapper;
         this.departmentMapper = departmentMapper;
         this.departmentRankMapper = departmentRankMapper;
+        this.employeeSalaryMapper = employeeSalaryMapper;
     }
 
     /**
@@ -127,6 +133,11 @@ public class EmployeeService {
             throw new BizException("员工不存在或已被删除");
         }
         employeeMapper.deleteById(id);
+        // 薪酬表按工号关联，员工物理删除后必须一并清掉，否则留下孤儿行：
+        // 工号一旦被再次启用（员工工号是业务键，复用在现实中很常见），
+        // 新员工会静默继承前任的薪酬，且不会报任何错
+        employeeSalaryMapper.delete(Wrappers.<EmployeeSalary>lambdaQuery()
+                .eq(EmployeeSalary::getWorkNo, existing.getWorkNo()));
     }
 
     private void ensureWorkNoUnique(String workNo, Integer excludeId) {

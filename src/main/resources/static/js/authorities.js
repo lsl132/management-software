@@ -38,6 +38,8 @@
         mnemonic: document.getElementById('mnemonic'),
         mnemonicHint: document.getElementById('mnemonicHint'),
         authName: document.getElementById('authName'),
+        pathField: document.getElementById('pathField'),
+        path: document.getElementById('path'),
         description: document.getElementById('description'),
         btnSubmit: document.getElementById('btnSubmitAuthority')
     };
@@ -59,6 +61,21 @@
             return '<span class="text-muted">—</span>';
         }
         return '<span class="badge badge--info">' + count + ' 个角色</span>';
+    }
+
+    /**
+     * 功能页路由：直接缀在权限名称下方，不单开一列。
+     * 这张表已有 7 列，「说明」一列本来就把表撑得很宽，再加列会让操作列更早被挤出可视区。
+     * 没有路由的功能页要显式标出来，否则「菜单里为什么点不动」只能靠猜。
+     */
+    function pathLine(record) {
+        if (Number(record.type) === TYPE_GROUP) {
+            return '';
+        }
+        if (!record.path) {
+            return '<span class="auth-row__path auth-row__path--off">未设路由 · 导航置灰</span>';
+        }
+        return '<span class="auth-row__path">' + App.escapeHtml(record.path) + '</span>';
     }
 
     function actions(record) {
@@ -95,7 +112,8 @@
 
             children.forEach(function (page) {
                 html += '<tr class="auth-row auth-row--page">'
-                    + '<td><span class="auth-row__child">' + App.dash(page.authName) + '</span></td>'
+                    + '<td><span class="auth-row__child">' + App.dash(page.authName) + '</span>'
+                    + pathLine(page) + '</td>'
                     + '<td>' + App.dash(page.mnemonic) + '</td>'
                     + '<td>' + typeBadge(page.type) + '</td>'
                     + '<td>' + App.dash(page.description) + '</td>'
@@ -189,10 +207,14 @@
     function syncTypeUi() {
         var isPage = isPageType();
         el.groupPickField.hidden = !isPage;
+        el.pathField.hidden = !isPage;
         el.mnemonicHint.textContent = isPage
             ? '在所属分组的万位内递增，如 ' + (Number(el.groupPick.value) + 5)
             : '整万位，如 60000';
         if (!isPage) {
+            // 分组是下拉容器、没有页面：切过去就把残留的路由清掉，
+            // 否则会带着上一个功能页的地址提交，服务端虽然会强制置空，但界面上先给出正确状态更清楚
+            el.path.value = '';
             return;
         }
         renderGroupOptions(el.groupPick.value);
@@ -211,6 +233,7 @@
             el.mnemonic.value = record.mnemonic === null || record.mnemonic === undefined
                 ? '' : String(record.mnemonic);
             el.authName.value = record.authName || '';
+            el.path.value = record.path || '';
             el.description.value = record.description || '';
             if (Number(record.type) === TYPE_PAGE) {
                 el.groupPick.value = String(Math.floor(Number(record.mnemonic) / GROUP_UNIT) * GROUP_UNIT);
@@ -220,11 +243,13 @@
             el.groupPick.value = String(presetGroupMnemonic);
             el.mnemonic.value = String(nextMnemonicOf(presetGroupMnemonic));
             el.authName.value = '';
+            el.path.value = '';
             el.description.value = '';
         } else {
             el.type.value = String(TYPE_GROUP);
             el.mnemonic.value = '';
             el.authName.value = '';
+            el.path.value = '';
             el.description.value = '';
         }
         applying = false;
@@ -265,6 +290,24 @@
         } else if (mnemonic % GROUP_UNIT !== 0) {
             return '模块分组的助记符必须是整万位，如 10000、60000';
         }
+        if (!isPageType()) {
+            return null;
+        }
+        // 路由可空（代表该功能页还没做），填了就必须是站内绝对路径：
+        // 相对路径会跟着当前页 URL 变，同一个菜单项在不同页面点开跳到不同地方
+        var path = el.path.value.trim();
+        if (!path) {
+            return null;
+        }
+        if (path.charAt(0) !== '/') {
+            return '页面路由必须以 / 开头，如 /employees';
+        }
+        if (/\s/.test(path)) {
+            return '页面路由不能包含空格';
+        }
+        if (path.length > 128) {
+            return '页面路由长度不能超过 128';
+        }
         return null;
     }
 
@@ -281,7 +324,9 @@
             mnemonic: Number(el.mnemonic.value),
             authName: el.authName.value.trim(),
             description: el.description.value.trim() || null,
-            type: Number(el.type.value)
+            type: Number(el.type.value),
+            // 分组没有页面，显式送 null；服务端也会强制置空，这里只是别把界面上残留的值带过去
+            path: isPageType() ? (el.path.value.trim() || null) : null
         };
 
         var editingId = state.editingId;

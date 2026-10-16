@@ -1,6 +1,8 @@
 package com.gangtise.backend.interfaces.web;
 
 import com.gangtise.backend.application.dto.CurrentUserVO;
+import com.gangtise.backend.application.dto.NavGroupVO;
+import com.gangtise.backend.application.service.NavigationService;
 import com.gangtise.backend.application.service.OptionService;
 import com.gangtise.backend.infrastructure.interceptor.LoginInterceptor;
 import jakarta.servlet.http.HttpSession;
@@ -9,10 +11,12 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * 后台页面控制器（返回 Thymeleaf 视图名）。
@@ -35,9 +39,11 @@ public class PageController {
     private static final String VIEW_USERS = "users";
     private static final String VIEW_ROLES = "roles";
     private static final String VIEW_AUTHORITIES = "authorities";
+    private static final String VIEW_WORKFLOWS = "workflows";
     private static final String VIEW_ABOUT = "about";
 
     private final OptionService optionService;
+    private final NavigationService navigationService;
     private final Environment environment;
 
     @Value("${spring.application.name:backend-management}")
@@ -49,9 +55,23 @@ public class PageController {
     @Value("${spring.thymeleaf.cache:false}")
     private boolean thymeleafCache;
 
-    public PageController(OptionService optionService, Environment environment) {
+    public PageController(OptionService optionService,
+                          NavigationService navigationService,
+                          Environment environment) {
         this.optionService = optionService;
+        this.navigationService = navigationService;
         this.environment = environment;
+    }
+
+    /**
+     * 顶部二级导航的菜单数据（每个页面都要用，做成 {@code @ModelAttribute} 保证不漏挂）。
+     *
+     * <p>本控制器的每个页面处理方法执行前都会跑一遍；只在页面渲染时调用，不影响 REST 接口
+     * （facade 层的接口是另一个控制器，不会带上这个模型属性）。
+     */
+    @ModelAttribute("navMenus")
+    public List<NavGroupVO> navMenus() {
+        return navigationService.menus();
     }
 
     /** 站点根路径统一引导到系统欢迎页。 */
@@ -85,6 +105,8 @@ public class PageController {
      *
      * <p>下拉框选项中，部门/性别/学历/状态为固定字典，服务端直接渲染；
      * 职级隶属于部门，需随所选部门变化，改由前端 ajax 调 {@code /api/options/ranks} 动态加载。
+     *
+     * <p>币种字典供页面上的「薪酬」弹窗使用（该弹窗与员工表单是两个独立弹窗）。
      */
     @GetMapping("/employees")
     public String employees(HttpSession session, Model model) {
@@ -94,6 +116,7 @@ public class PageController {
         model.addAttribute("genders", optionService.genders());
         model.addAttribute("educations", optionService.educations());
         model.addAttribute("employeeStatuses", optionService.employeeStatuses());
+        model.addAttribute("currencies", optionService.currencies());
         return VIEW_EMPLOYEES;
     }
 
@@ -171,6 +194,24 @@ public class PageController {
         model.addAttribute("user", currentUser(session));
         model.addAttribute("authorityTypes", optionService.authorityTypes());
         return VIEW_AUTHORITIES;
+    }
+
+    /**
+     * 流程管理页（权限字典 10004，即「审批规则」）。
+     *
+     * <p>一条规则 = 流程头 + 有序节点链，节点编排在同一弹窗里完成，不跳第二个页面。
+     *
+     * <p>服务端只下发**稳定字典**：流程状态（用于筛选与表单）。审批方式与审批模式体量小、
+     * 且「直属上级」需要置灰标注，直接写在模板里；审批人（系统账号）与审批角色会随数据变化，
+     * 角色走服务端渲染，用户列表由前端 ajax 调 {@code /api/options/users} 拉取。
+     */
+    @GetMapping("/workflows")
+    public String workflows(HttpSession session, Model model) {
+        model.addAttribute("active", "workflows");
+        model.addAttribute("user", currentUser(session));
+        model.addAttribute("workflowStatuses", optionService.workflowStatuses());
+        model.addAttribute("roles", optionService.roles());
+        return VIEW_WORKFLOWS;
     }
 
     /** 运行信息页。 */

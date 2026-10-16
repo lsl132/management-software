@@ -2,11 +2,13 @@ package com.gangtise.backend;
 
 import com.gangtise.backend.domain.aggregate.Authority;
 import com.gangtise.backend.domain.aggregate.Employee;
+import com.gangtise.backend.domain.aggregate.entity.EmployeeSalary;
 import com.gangtise.backend.domain.aggregate.entity.UserAccount;
 import com.gangtise.backend.infrastructure.enums.AuthorityTypeEnum;
 import com.gangtise.backend.infrastructure.enums.EmployeeStatusEnum;
 import com.gangtise.backend.infrastructure.repository.mapper.AuthorityMapper;
 import com.gangtise.backend.infrastructure.repository.mapper.EmployeeMapper;
+import com.gangtise.backend.infrastructure.repository.mapper.EmployeeSalaryMapper;
 import com.gangtise.backend.infrastructure.repository.mapper.UserAccountMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,10 +26,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * 业务键唯一性约束验证。
  *
- * <p>四个业务键必须有唯一约束：{@code employee.work_no}、{@code authority.mnemonic}、
- * {@code user_account.identifier}、{@code attendance.(work_no, day)}。第一个是员工的业务主键，
- * 第二个是权限字典的幂等冲突键，第三个是登录标识，第四个是考勤统计「一人一天一行」的业务键
- * （也是定时任务幂等 upsert 的冲突键）。这里从两个角度锁定该约定：
+ * <p>五个业务键必须有唯一约束：{@code employee.work_no}、{@code authority.mnemonic}、
+ * {@code user_account.identifier}、{@code attendance.(work_no, day)}、{@code employee_salary.work_no}。
+ * 第一个是员工的业务主键，第二个是权限字典的幂等冲突键，第三个是登录标识，
+ * 第四个是考勤统计「一人一天一行」的业务键，第五个是员工薪酬「一人一行」的业务键
+ * （后两者同时是各自 upsert 的冲突键）。这里从两个角度锁定该约定：
  * <ol>
  *   <li>元数据：对应列上存在非主键的唯一索引；</li>
  *   <li>行为：重复写入会被数据库拒绝，并翻译成 {@link DuplicateKeyException}，
@@ -59,15 +62,18 @@ class UniqueConstraintTest {
     private AuthorityMapper authorityMapper;
     @Autowired
     private UserAccountMapper userAccountMapper;
+    @Autowired
+    private EmployeeSalaryMapper employeeSalaryMapper;
 
     @ParameterizedTest(name = "{0}.{1} 上有唯一索引")
     @CsvSource({
-            "employee,     work_no",
-            "authority,    mnemonic",
-            "user_account, identifier",
-            "attendance,   work_no"
+            "employee,        work_no",
+            "authority,       mnemonic",
+            "user_account,    identifier",
+            "attendance,      work_no",
+            "employee_salary, work_no"
     })
-    @DisplayName("四个业务键均存在唯一索引")
+    @DisplayName("五个业务键均存在唯一索引")
     void uniqueIndexExists(String table, String column) {
         Integer count = jdbcTemplate.queryForObject(UNIQUE_INDEX_SQL, Integer.class, table, column);
         assertTrue(count != null && count > 0,
@@ -130,6 +136,29 @@ class UniqueConstraintTest {
         duplicate.setCredential("$2a$10$uniqueConstraintTestOnly");
 
         assertDuplicateRejected("user_account.identifier", () -> userAccountMapper.insert(duplicate));
+    }
+
+    @Test
+    @DisplayName("同一工号的第二条薪酬被拒绝（employee_salary.work_no）")
+    void duplicateSalaryWorkNoIsRejected() {
+        String workNo = "DUP-SALARY-WORK-NO";
+
+        EmployeeSalary first = new EmployeeSalary();
+        first.setWorkNo(workNo);
+        first.setCurrency("CNY");
+        first.setMonthSalary(10000.0D);
+        first.setYearSalary(120000.0D);
+        first.setDaySalary(459.77D);
+        employeeSalaryMapper.insert(first);
+
+        EmployeeSalary duplicate = new EmployeeSalary();
+        duplicate.setWorkNo(workNo);
+        duplicate.setCurrency("CNY");
+        duplicate.setMonthSalary(20000.0D);
+        duplicate.setYearSalary(240000.0D);
+        duplicate.setDaySalary(919.54D);
+
+        assertDuplicateRejected("employee_salary.work_no", () -> employeeSalaryMapper.insert(duplicate));
     }
 
     private void assertDuplicateRejected(String target, Runnable action) {

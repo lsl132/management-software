@@ -62,6 +62,8 @@ public class AuthService {
      * @return 登录用户信息
      */
     public CurrentUserVO login(LoginRequest request, String loginIp) {
+        log.info("[AUTH] {},登录请求 -> identifier={}, keyId={}, cipher:{}",
+                loginIp, request.getUsername(), request.getKeyId(), request.getCipher());
         String plainPassword = cryptoService.decryptOnce(request.getKeyId(), request.getCipher());
         if (!StringUtils.hasText(plainPassword)) {
             throw BizException.unauthorized("用户名或密码错误");
@@ -100,7 +102,9 @@ public class AuthService {
         log.info("[AUTH] 登录成功 -> identifier={}, displayName={}, userId={}, role={}",
                 loginName, user.getUsername(), user.getId(), roleName);
         recordLogin(user.getId(), loginIp);
-        return new CurrentUserVO(user.getId(), user.getUsername(), roleName);
+        // identifier 取自库里那行（account.getIdentifier()），不是用户输入的原文：
+        // 它要落到审计字段里，必须是数据库认定的那个登录标识
+        return new CurrentUserVO(user.getId(), account.getIdentifier(), user.getUsername(), roleName);
     }
 
     /**

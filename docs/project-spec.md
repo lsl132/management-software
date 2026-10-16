@@ -66,7 +66,8 @@
 - 页面控制器只负责组装视图模型，不承载业务逻辑，业务处理下沉到 `application.service`
 - 公共片段统一放在 `templates/fragments/`。当前 `fragments/layout.html` 提供：
   - `head(title)`：页面 head（meta、标题、样式表）
-  - `header(active)`：顶部导航，`active` 用于高亮当前菜单，取值 `home` / `employees` / `departments` / `users` / `roles` / `announcements` / `schedules` / `about`
+  - `header(active)`：顶部二级导航。`active` 用于高亮当前项，取值是**路由的首段**（`/employees` → `employees`）：`home` / `employees` / `departments` / `users` / `roles` / `authorities` / `announcements` / `schedules` / `about`。
+    菜单数据 `navMenus` 由 `PageController` 的 `@ModelAttribute` 统一注入（各页面不用自己挂），一级是 `authority` 里 `type=1` 的模块分组、二级是其下功能页，见 §12.19
   - `footer`：页脚
   - 引用方式：`<head th:replace="~{fragments/layout :: head('首页')}"></head>`
   - 调用带参片段时必须显式传参（如 `~{fragments/layout :: header('')}`），传空串而非省略参数，避免渲染异常难以定位
@@ -83,6 +84,7 @@
 - 未登录时接口返回 HTTP 401 + `code: 401` JSON，请求封装统一跳转登录页；后台页面请求未登录则由拦截器 302 到 `/login`
 - 操作结果用轻提示（`App.toast`）反馈，不使用 `alert`（破坏性操作确认除外）
 - 表单校验：前端做即时提示，后端以 `@Valid` 兜底，两边的错误信息都通过统一返回体回传
+- **分页列表取数必须显式转数字**：`state.total / current / size` 一律写 `Number(data.xxx)`。全局 Jackson 策略会把 `Long` 序列化成字符串，若不转换，`state.current + 1` 会变成字符串拼接（`"1" + 1 === "11"`），点「下一页」直接跳到第 11 页；而「上一页」用的是减号（`"2" - 1 === 1`）不会暴露问题——所以这个 bug 只在下一页出现。四个分页页面（`employees` / `users` / `announcements` / `workflows`）写法必须一致，详见 §12.21
 - **浏览器本地存储（localStorage）只允许存非敏感数据**：目前仅登录页的「记住登录账号」用账号名（键 `backend:login:remember-username`）。**禁止把密码、SM2 密文、会话令牌写入 localStorage / cookie**
 - localStorage 读写必须 `try/catch` 兜底：隐私模式或被浏览器禁用时会直接抛异常，不能因此影响主流程
 
@@ -96,6 +98,7 @@
 | `/users` | `users.html` | 用户管理（系统账号分页列表 + 弹窗增删改查 + 设置角色 + 重置密码 + 冻结/解冻） | 需要 |
 | `/roles` | `roles.html` | 角色管理（角色列表 + 弹窗增删改查 + 行内「挂载权限」打开两级权限树弹窗） | 需要 |
 | `/authorities` | `authorities.html` | 权限管理（树形列表：分组行 + 缩进功能页行；弹窗增删改查） | 需要 |
+| `/workflows` | `workflows.html` | 流程管理（审批规则：分页列表 + 弹窗内维护流程信息与节点链 + 详情 + 行内启停/删除） | 需要 |
 | `/announcements` | `announcements.html` | 公告管理（分页列表 + 弹窗增删改查 + 行内发布/下线） | 需要 |
 | `/schedules` | `schedules.html` | 我的日程（月历 + 当月列表 + 弹窗增删改查） | 需要 |
 | `/about` | `about.html` | 运行信息 | 需要 |
@@ -189,7 +192,7 @@
 | `infrastructure.config.MybatisPlusConfig` | 分页插件（PostgreSQL 方言，单页上限 500）、乐观锁、防全表更新删除 |
 | `infrastructure.config.MyMetaObjectHandler` | createTime / updateTime / deleted 公共字段自动填充（更新时强制刷新 updateTime） |
 | `infrastructure.config.RedisConfig` | RedisTemplate JSON 序列化、RedisCacheManager、`@EnableCaching` |
-| `infrastructure.config.JacksonConfig` | LocalDateTime 统一 `yyyy-MM-dd HH:mm:ss`、GMT+8 时区、Long → String 防前端精度丢失 |
+| `infrastructure.config.JacksonConfig` | LocalDateTime 统一 `yyyy-MM-dd HH:mm:ss`、GMT+8 时区、Long → String 防前端精度丢失（唯一例外是分页计数，见 §12.21） |
 | `infrastructure.config.CryptoConfig` | BCrypt `PasswordEncoder`（只引入 spring-security-crypto，不引入完整 Spring Security） |
 | `infrastructure.config.WebMvcConfig` | 注册 `LoginInterceptor`，放行登录页/登录接口/静态资源/错误页 |
 
@@ -239,7 +242,7 @@
 | `department` | `domain.aggregate.Department` | — |
 | `employee` | `domain.aggregate.Employee` | `work_no` |
 | `department_rank` | `domain.aggregate.entity.DepartmentRank` | `code` |
-| `employee_salary` | `domain.aggregate.entity.EmployeeSalary` | — |
+| `employee_salary` | `domain.aggregate.entity.EmployeeSalary` | `work_no` |
 | `attendance_record` | `domain.aggregate.entity.AttendanceRecord` | — |
 | `attendance` | `domain.aggregate.Attendance` | `(work_no, day)` |
 | `role` | `domain.aggregate.Role` | `name` |
@@ -257,6 +260,7 @@
 | `work_order_activity` | `domain.aggregate.entity.WorkOrderActivity` | — |
 
 > `authority` 为**两级权限**：`type` = 1 模块分组（菜单）/ 2 功能页，助记符的万位区分所属模块分组，见 §12.6。
+> `authority.path` 是功能页的路由，**同时是顶部二级导航的跳转地址**；为空表示该功能页尚未实现，导航里置灰，见 §12.19。
 
 > **考勤（`attendance_record` / `attendance`）**：明细与汇总的关系——前者是一次刷卡一行（只追加），
 > 后者是一人一天一行（可重算）。`attendance` 的业务键 `(work_no, day)` 由唯一索引
@@ -274,7 +278,10 @@
 > 关联列类型与被引用主键保持一致：`workflow_node.workflow_id` / `work_order.workflow_id` 为 `integer`，
 > `work_order_activity.work_order_id` 为 `bigint`（对应 `work_order.id`）。
 
-**业务键唯一性（必须保持）**：四个业务键由数据库唯一索引兜底，禁止重复写入。
+> **薪酬（`employee_salary`）**：一人一行，业务键是 `work_no`，由唯一索引 `uk_employee_salary_work_no`
+> 兜底并作为 upsert 的冲突键；金额列是 `numeric(18,2)`，接口边界用 `BigDecimal` 保证两位小数。见 §12.18。
+
+**业务键唯一性（必须保持）**：五个业务键由数据库唯一索引兜底，禁止重复写入。
 
 | 业务键 | 唯一索引 | 说明 |
 | --- | --- | --- |
@@ -282,6 +289,7 @@
 | `authority.mnemonic` | `uk_authority_mnemonic` | 权限助记符，同时是 seed 幂等 upsert 的冲突键 |
 | `user_account.identifier` | `uk_user_account_identifier` | 登录标识，一个登录名只能绑定一个账号 |
 | `attendance.(work_no, day)` | `uk_attendance_work_no_day` | 考勤统计「一人一天一行」，同时是定时任务幂等 upsert 的冲突键（见 §12.17） |
+| `employee_salary.work_no` | `uk_employee_salary_work_no` | 员工薪酬「一人一行」，同时是 upsert 的冲突键（见 §12.18） |
 
 - 唯一性统一用 `create unique index` 表达（**不用** `alter table ... add constraint`）：既能被 `on conflict (列) do update` 直接用作冲突键，也便于后续按需降级为普通索引
 - 重复写入抛 `DuplicateKeyException`，由 `GlobalExceptionHandler` 转成「数据已存在…」的业务提示，不会落到 500
@@ -344,19 +352,23 @@
 | 4 | M 管理 | 管理总部 | M1 组长 / M2 经理 / M3 总监 / M4 副总 / M5 CEO |
 | 5 | S 销售 | 销售部 | S1 销售代表 / S2 销售经理 / S3 区域经理 / S4 销售总监 |
 
-**权限字典（`authority`，seed 23 条）**：`type` 见 `AuthorityTypeEnum`（1 模块分组 / 2 功能页），`mnemonic` 为全公司唯一助记符——**万位即所属模块分组**（如 20003 属于 20000 人力资源），因此功能页不需要额外存父级 ID。下表是 seed 基线，之后可在「权限管理」（§12.16）里继续新增。
+**权限字典（`authority`，seed 24 条）**：`type` 见 `AuthorityTypeEnum`（1 模块分组 / 2 功能页），`mnemonic` 为全公司唯一助记符——**万位即所属模块分组**（如 20003 属于 20000 人力资源），因此功能页不需要额外存父级 ID。`path` 是功能页的路由（**留空 = 该功能页尚未实现**，导航里置灰）。下表是 seed 基线，之后可在「权限管理」（§12.16）里继续新增。
 
-| 模块分组（mnemonic / type=1） | 功能页（mnemonic / type=2） |
+| 模块分组（mnemonic / type=1） | 功能页（mnemonic / type=2，括号内为 path） |
 | --- | --- |
-| 系统设置（10000） | 10001 系统用户 / 10002 权限管理 / 10003 角色管理 / 10004 审批规则 |
-| 人力资源（20000） | 20001 员工管理 / 20002 薪酬绩效 / 20003 组织架构 |
-| 财务管理（30000） | 30001 应收应付 / 30002 资产清单 / 30003 税务报表 / 30004 预算管控 / 30005 财务计划 |
-| 生产制造（40000） | 40001 订单管理 / 40002 库存管理 / 40003 生产排程 / 40004 物料需求 |
-| 战略决策（50000） | 50001 经营报表 / 50002 销售趋势 |
+| 系统设置（10000） | 10001 系统用户（`/users`）/ 10002 权限管理（`/authorities`）/ 10003 角色管理（`/roles`）/ 10004 流程管理（`/workflows`）/ 10005 公告管理（`/announcements`） |
+| 人力资源（20000） | 20001 员工管理（`/employees`）/ 20002 薪酬绩效（—）/ 20003 组织架构（`/departments`） |
+| 财务管理（30000） | 30001 应收应付（—）/ 30002 资产清单（—）/ 30003 税务报表（—）/ 30004 预算管控（—）/ 30005 财务计划（—） |
+| 生产制造（40000） | 40001 订单管理（—）/ 40002 库存管理（—）/ 40003 生产排程（—）/ 40004 物料需求（—） |
+| 战略决策（50000） | 50001 经营报表（—）/ 50002 销售趋势（—） |
 
 - 权限为**两级**结构：模块分组只作菜单分组展示（助记符为整万位），功能页挂在其下
 - `role_authority.mnemonic` 引用 `authority.mnemonic`（非主键关联）；分组与功能页可分别授权，前端按万位组织菜单树
-- 字典校验测试 `AuthorityDictionaryTest`（3 例）：**seed 基线完整性（包含式，不限制运维新增）**、功能页万位归属、分组助记符整万位与名称抽样核对
+- `path` **只对功能页有效**：模块分组是下拉容器、本身没有页面，服务端一律把分组的路由归一成 null（`AuthorityService.normalizePath`），
+  不依赖调用方自觉——留着路由会让导航渲染出一个「能点但打不开」的一级入口
+- seed 重跑会把 `path` 覆盖回基线值（与 `auth_name` / `type` 同一策略）：它是字典基线，不是运维数据
+- **注意**：seed 里 24 条中只有 7 条填了 `path`，其余 12 个功能页都是「规划中」——菜单照常列出但置灰，见 §12.19
+- 字典校验测试 `AuthorityDictionaryTest`（4 例）：**seed 基线完整性（包含式，不限制运维新增）**、功能页万位归属、分组助记符整万位与名称抽样核对、**路由约定（分组无路由、功能页路由为站内绝对路径）**
 
 ### 12.7 部门与职级的隶属关系（重要业务规则）
 - **职级隶属于部门**：`department_rank.department` 非空，不同部门有各自的职级体系；职级编码 `code` 仍保持全公司唯一；实体类 `domain.aggregate.entity.DepartmentRank` 与表 `department_rank` 命名一一对应
@@ -554,9 +566,16 @@
 - 前端交互：类型切换时「所属模块分组」下拉按需显隐；分组行的「加功能页」按钮会预选该分组并自动给出
   下一个可用助记符（该分组下最大功能页 +1）；手改助记符时反向同步分组下拉；提交前做与后端同规则的格式校验
 - `authority.description` 用 `FieldStrategy.ALWAYS`：表单留空即清空
-- 测试：`AuthorityApiTest`（9 例：登录保护、万位归组、助记符唯一、节点带 id/roleCount、关键字过滤、
-  CRUD 全流程、格式与归属校验、改助记符级联同步 role_authority、删除保护、页面渲染）；
-  `AuthorityDictionaryTest`（3 例）改为**包含式**断言 seed 的 23 条基线完整，不再限制运维后新增的权限
+- **路由（`path`）在同一个弹窗里维护**：类型切到「功能页」时才显示，切回「分组」会清空输入框；
+  列表不单开一列，而是把路由缀在权限名称下方（`/employees` 等宽字体；未设路由的用告警色标「未设路由 · 导航置灰」）——
+  这张表已有 7 列，「说明」一列本就把表撑得很宽，再加列会让操作列更早被挤出可视区
+- **路由格式校验**（两边同规则）：可空；非空时必须以 `/` 开头、不含空白、不超 128。
+  - 相对路径被拒的理由：它会跟着当前页 URL 变，同一个菜单项在不同页面点开跳到不同地方
+  - 空串与留空等价（服务端 `trimToNull` 归一成 null）：库里只允许 `null` 一种「没有路由」，否则判空到处都要写两遍
+- 测试：`AuthorityApiTest`（11 例：登录保护、万位归组、助记符唯一、节点带 id/roleCount、关键字过滤、
+  CRUD 全流程、格式与归属校验、**路由存取与归一（分组强制置空、留空即清空）**、**路由格式校验**、
+  改助记符级联同步 role_authority、删除保护、页面渲染）；
+  `AuthorityDictionaryTest`（4 例，含路由约定）改为**包含式**断言 seed 的 24 条基线完整，不再限制运维后新增的权限
 
 
 ### 12.17 考勤（打卡 + 每日统计）
@@ -646,7 +665,242 @@
 - `IpNetworkTest`（15 例）：IPv4/IPv6 网段、非整字节前缀（`/25`）、主机位掩码归一、`/0` 标记、
   裸 IP 等价 `/32`、IPv4 映射写法归一、作用域标识、协议族互不匹配、非法配置抛异常、非法地址不匹配
 - `AttendanceStatisticsTaskTest`（15 例）：最早/最晚与插入顺序无关、零点归属、左右边界、正常/迟到/早退/迟到且早退/缺卡、单次打卡同时算迟到早退、无效记录不参与、有效无效混合只按有效判定、只统计在职员工、**重跑幂等且覆盖**、定时任务汇总昨天 + 开关关闭不写库、`yyyyMMdd` 补零
-- `UniqueConstraintTest` 补 `attendance.work_no` 唯一索引元数据断言（4 个业务键）
+- `UniqueConstraintTest` 补 `attendance.work_no` 唯一索引元数据断言（5 个业务键）
+
+### 12.18 员工薪酬（`employee_salary`）
+
+**入口位置**：员工管理页列表行内的「薪酬」按钮 → 薪酬弹窗。不做独立菜单页——薪酬必须依附于某个具体员工，
+脱离员工的薪酬列表没有业务含义；也**不并进员工编辑弹窗**：人事信息与薪酬的敏感度不同，
+改个电话不该顺带暴露年薪。
+
+#### 接口
+- `GET /api/employees/{employeeId}/salary`，`employeeId` 是**员工主键**
+- `PUT /api/employees/{employeeId}/salary`，入参 `EmployeeSalarySaveDTO`：`currency` + `monthSalary` / `yearSalary` / `daySalary`
+- 做成员工的子资源而不是独立的 `/api/salaries`：URL 上带着员工主键，服务端能顺手校验「这个员工真的存在」
+- **未设置过时 `data` 为空**（不是一条全 0 记录）：「没设过」和「设成 0」是两件事，
+  前者前端提示「尚未设置」，后者是明确的业务值
+- 沿用 `/api/**` 的登录态拦截，**未登录 401**；保存时把当前登录人写进 `update_by`
+- **权限现状**：只校验「已登录」。项目的权限字典（`authority` / `role_authority`）目前不参与请求鉴权，
+  所以能登录的人就能改薪酬。权限字典里已有 `20002 薪酬绩效`，将来要做接口级鉴权可直接挂上去
+
+#### 关联键与级联（必须知道）
+- **关联键是工号不是员工主键**：`employee_salary.work_no` 才是这张表的业务键，接口路径上的员工主键
+  由 `EmployeeSalaryService` 换算成工号。这样换主键不影响薪酬数据
+- **删除员工必须连带删薪酬**：`EmployeeService.delete` 在同事务里按工号清理。
+  不清理就会留下孤儿行——员工工号是业务键、现实中会被再次启用，新员工届时会**静默继承前任的薪酬**，
+  这种错不报任何异常，只会在某天被 HR 发现
+
+#### 一人一行与幂等
+- 业务键 `work_no`，唯一索引 `uk_employee_salary_work_no`（原普通索引 `idx_employee_salary_work_no` 已升级并移除）
+- 写入走 `EmployeeSalaryMapper.upsert` 的 `on conflict (work_no) do update`：两个人同时打开同一员工的
+  薪酬弹窗时，「都查不到 → 都插入」会插出两行同工号记录，之后谁在改哪一行就说不清了
+- `create_time` 只在 insert 分支写（保留「这条薪酬第一次是什么时候设的」），
+  `update_time` / `update_by` 每次写都刷新（回答「现在的值是谁什么时候改的」）
+- 自定义 `@Insert` 必须自己写 `create_time` / `update_time`：MyBatis-Plus 的自动填充只对它自身注入的方法生效
+
+#### 金额约定
+- 列类型 `numeric(18,2)`；DTO 与 VO 都用 `BigDecimal`，落库前 `setScale(2, HALF_UP)`，
+  回参统一两位小数（`1000.5` 回成 `1000.50`）
+  - 实体沿用既有的 `Double`，但**接口边界不用浮点**：让钱先掉进二进制浮点再落库，
+    迟早会出现 `1234.5600000000001` 这类值
+- **三个金额都不可缺省**：`0` 表示「该项不适用」是合法语义，所以不能用「没传 = 0」兜底——
+  那会让客户端漏传一个字段变成静默清零。宁可 400
+- 校验：`@DecimalMin(0)` 拒绝负数，`@Digits(integer = 16, fraction = 2)` 与 `numeric(18,2)` 对齐
+- 币种走 `CurrencyEnum` **白名单**而不是格式校验：`currency` 是 varchar，格式校验放得过 `"ABC"`，
+  而「支持的币种」本来就是一份封闭清单；入库前 `trim + toUpperCase` 归一
+- `currencyText` 由服务端拼好下发：让前端自己维护「码值 → 中文」的映射迟早会与后端枚举漂移
+
+#### 月薪是换算基准（前端）
+- 改月薪即刷新年薪（`×12`）与日薪（`÷ 21.75`，月计薪天数），随后**可手工覆盖**
+- **不做「三者必须自洽」的校验**：现实里年薪常含年终奖，不等于月薪 × 12
+- 换算只在前端做、服务端按传入值原样落库：这样才能容纳手工覆盖；若服务端也按公式重算，
+  手工改过的值会被静默改回去
+- 弹窗里写明「改这里会同时刷新年薪与日薪」，避免出现「我只改了月薪，年薪怎么也变了」
+
+#### 审计列
+- 表原有 `create_time`，补 `update_time` + `update_by`（`user_account.identifier`，登录标识）
+- **审计一律用 `identifier`，不用 `user.username`**：后者是可随时改成中文姓名的展示名，
+  一改历史记录就对不上人（见 §13.1 的同一条教训）。为此 `CurrentUserVO` 补了 `identifier` 字段
+- 已有库补列必须写成 `alter table ... add column if not exists`，且**排在 `comment on column` 之前**：
+  `create table if not exists` 对已存在的表不会加列，而注释语句引用不存在的列会直接打断整个脚本
+
+#### 测试
+- `EmployeeSalaryApiTest`（13 例）：未登录不可读写、未设置时 data 为空、员工不存在报错、
+  保存成功（币种中文 + 操作人 + 恰好一行）、**重复保存覆盖同一行**、
+  **覆盖不刷新 create_time**（先用标记时间改写 create_time 再保存一次，而不是比较两次时间差——
+  整套用例在同一个事务里，`current_timestamp` 取的是事务开始时间）、金额补两位小数、
+  币种白名单、负数与三位小数、金额缺省、币种为空、币种大小写与空格归一、**删除员工级联清理薪酬**
+
+### 12.19 顶部二级导航（由权限字典驱动）
+
+**菜单不再硬编码在模板里**：一级入口是 `authority` 中 `type=1` 的模块分组（5 个），二级是该分组下 `type=2` 的功能页。
+菜单结构（有哪些模块、每个模块下有哪些功能页）在权限管理页里本来就要维护一份，硬编码在模板里等于维护两份，
+新增功能页时要记得改两处、漏改也不报错。
+
+#### 组成
+
+| 部分 | 来源 | 说明 |
+| --- | --- | --- |
+| 欢迎页 `/home` | 模板写死 | 固定基础项，不属于任何业务模块 |
+| 5 个模块分组 | `navMenus`（`NavigationService`） | 一级，`<button>` 触发器 + 下拉浮层 |
+| 分组下的功能页 | 同上 | 二级；`path` 非空渲染成 `<a>`，为空渲染成置灰的 `<span>` |
+| 我的日程 `/schedules`、关于 `/about` | 模板写死 | 固定基础项，排在业务模块之后 |
+
+> 固定基础项（欢迎页 / 我的日程 / 关于）**不占权限字典**：它们是系统自身页面，与「业务模块能授权给谁」无关，
+> 写死反而更稳——否则管理员误删字典里对应条目会连退出登录之外的入口一起消失。
+
+#### 装配与注入
+- `NavigationService.menus()` 读 `authorityService.listAll()` 装配（单表、二十来行，未加缓存；
+  加缓存要处理「权限管理页改完菜单要立刻生效」的一致性问题，为省一次微不足道的查询引入难查的脏数据故障不划算）
+- 两类数据跳过并记 warn：找不到所属分组的功能页（孤儿）、一个功能页都没有的分组（点开是空浮层）
+- `PageController` 用 `@ModelAttribute("navMenus")` 注入，**每个页面只写一次**，新增页面时不会漏挂；
+  只在页面渲染时执行，不影响 REST 接口（facade 层的控制器不会带上这个模型属性）
+- `NavItemVO.key` = 路由**首段**（`/employees` → `employees`），与各页面控制器传给 `header` 片段的 `active` 对齐。
+  取首段而非整串，是为了让 `/employees/detail` 这类子路由也能点亮「员工管理」这一级
+
+#### 「规划中」的功能页：显示但置灰
+字典里 19 个功能页中只有 7 个填了 `path`，其余 12 个还没有页面。这类菜单项：
+- **照常列出**（菜单要体现系统整体规划，否则「系统到底规划了哪些模块」只能去权限管理页翻）
+- **置灰且不可点**：渲染成 `<span class="nav__submenu-link is-off">` 而不是 `<a>`——
+  视觉置灰拦不住点击，只要带 `href` 就会 404，必须在标签层面就不是链接
+- 可点性**完全来自数据**（`path` 是否为空），不额外维护白名单
+
+#### 交互与样式
+- 展开：CSS `:hover` / `:focus-within` 覆盖桌面悬停与键盘 Tab；`app.js` 的 `bindNavMenus()` 补点击开关
+  （iOS Safari 点 `<button>` 不给它焦点，只靠 CSS 打不开），点别处或按 `Esc` 收起
+- `.nav` 与 `.nav__item` 用 `align-self: stretch` 撑满头部高度：否则浮层与触发器之间会隔着头部内边距留一条缝，
+  鼠标移过去的路上菜单就收起来了
+- 一级项高亮 = `#lists.contains(group.keys, active)`；二级项高亮 = `key == active`
+
+#### 已知调整
+- 菜单文案改由字典决定，与旧导航有几处**名称变化**：`部门管理` → **组织架构**（字典 20003）、`用户管理` → **系统用户**（字典 10001）、`审批规则` → **流程管理**（字典 10004，落地时按实体语义改名，路由 `/workflows`）
+- `authority.path` 缺失的 12 个功能页一旦补上页面，**只需要在权限管理页填个路由**，导航自动出现可点入口，不用改代码
+
+#### 测试
+- `NavigationServiceTest`（5 例）：层级与升序、可点性与 `key` 来自路由、子路径取首段、整组置灰的分组照样下发、公告管理挂进系统设置
+- `NavigationPageTest`（6 例，**真实渲染整页后用 jsoup 按 DOM 结构断言**，不做字符串包含）：
+  两级结构、置灰项必须是 `<span>` 且不带 `href`、当前页与所属分组同时高亮且只点亮一个、
+  `active` 取首段使分组在子页面也保持高亮、固定基础项在每个页面都在、关于页已加载 `/js/app.js`
+
+> 为什么用 jsoup 而不是 `content().string(containsString(...))`：包含式断言只能证明「页面上出现过这几个字」，
+> 证明不了它在正确的位置、是否可点、是否被点亮。`nav__link` 这类 BEM 类名也不能写进 `th:*` 表达式
+> （会被 Thymeleaf 当成 `__xxx__` 预处理语法，见 §4），所以断言走独立的 `class` 选择器。
+
+### 12.20 流程管理（审批规则 `workflow` + `workflow_node`）
+
+**定位**：权限字典里的 10004 原名「审批规则」，对应的就是 `workflow` / `workflow_node` 两张表，
+落地时按实体语义更名「流程管理」，路由 `/workflows`。它只负责**定义规则**，不负责跑审批——
+审批实例是 `work_order`（工单），尚未实现（见文末「已知缺口」）。
+
+**一条规则 = 一个流程头（`workflow`）+ 一串有序节点（`workflow_node`）**，形状固定为
+「起始 → 若干审批 → 结束」。节点数量、类型、审批配置全部服务端校验，任一条不满足直接拒绝：
+
+| 约束 | 说明 |
+| --- | --- |
+| 节点数 ≥ 2 | 只有起始 + 结束也合法（等同于「提交即结束」） |
+| 起始节点恰好 1 个且排第一 | `type=0` |
+| 结束节点恰好 1 个且排最后 | `type=2` |
+| 审批节点必须有审批方式 | `approval_type` 见 `ApprovalTypeEnum` |
+| 审批节点必须有审批对象 | 指定人员 → `"user".id`；指定角色 → `role.id`；**必须在库里真实存在** |
+| 审批节点必须有审批模式 | `approval_mode` 见 `ApprovalModeEnum`（或签 / 会签） |
+| 起始与结束节点**不带**审批配置 | 客户端硬塞进来也由服务端归一成 `null`（实体上是 `FieldStrategy.ALWAYS`，置 null 即清空历史值） |
+
+**节点顺序不由客户端传**：直接取 `nodes` 数组下标，服务端统一重排为 `0,1,2…`。
+顺序本身就是数组，再传一份 `sort` 只会出现两份可以互相矛盾的次序。
+
+**流程名称全公司唯一**（`uk_workflow_name`）：列表里出现两条同名流程，审批人分不清该提交哪一个。
+服务侧 `WorkflowService#ensureNameUnique` 另做一次前置校验，只为给出可读提示，真正的兜底在库侧。
+
+#### 节点写入是差量同步，不是整批重建
+`WorkflowService#syncNodes`：**有 `id` 的改、无 `id` 的插、本次未提交的删**。
+不用「先按 `workflow_id` 全删再插」的原因：`work_order.create_node_id` 指向具体节点，
+整批重建会让在途工单的当前节点变成悬空引用——不报错，只是那张单子再也推不动。
+
+两处配套校验：
+- 提交了**不属于本流程**的节点 `id` → 400「节点数据已变化（id=x），请刷新页面后重新编辑」，
+  而不是悄悄改到别的流程上
+- **重复执行**同一份提交是幂等的：第二次提交同样的节点集合，既不新增也不删除
+
+> 踩过的坑：实体上 `workflow_id` 是 `FieldStrategy.ALWAYS`，更新分支若不带值会把列写成 `NULL`，
+> 而它是 `not null`，报出来是一个看不懂的约束冲突。所以同步时**统一先补齐 `workflowId`** 再决定 insert / update。
+
+#### 「直属上级」当前不可用
+`ApprovalTypeEnum.SUPERIOR(2)` 需要「员工的上级是谁」这份数据，而 `employee` 表没有上级字段、
+`user` 与 `employee` 之间也没有关联列——即便配出来，运行时也找不到该由谁来点通过，
+只会得到一条永远推不动的规则。因此枚举里保留这个码值（字典基线不残缺），
+但 `isSupported()` 返回 `false`：页面把它渲染成 `disabled` 选项并标注「暂不支持」，
+服务端保存时直接拒绝并提示改用「指定人员」或「指定角色」。
+
+#### 接口
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/workflows` | 分页（`current` / `size` / `keyword` 匹配名称与描述 / `status`），列表**不带节点明细**，只有 `nodeSummary` 摘要 |
+| GET | `/api/workflows/{id}` | 详情，带完整节点链与可读的审批人 / 角色名 |
+| POST | `/api/workflows` | 新增（流程头 + 节点链整体提交，单事务），返回流程ID |
+| PUT | `/api/workflows/{id}` | 修改（整体覆盖，节点走差量同步） |
+| DELETE | `/api/workflows/{id}` | 删除，**同事务级联删掉全部节点**（孤儿节点查不出来也删不掉，只会越积越多） |
+| POST | `/api/workflows/{id}/status` | 启用 / 禁用（列表行内快捷操作）；重复设置同一状态直接提示 |
+| GET | `/api/options/users` | 审批人候选：**只列正常状态的系统账号**（冻结账号连登录都过不去，选它等于把流程卡死） |
+
+- 列表不塞节点明细：每条流程都带一遍节点，翻一页要多传几十个对象，而列表上一个字都用不到
+- 一次把这页的节点全查回来再按 `workflow_id` 分组，避免 N+1
+- `approval_values` 落库是逗号分隔的字符串（与列注释一致）；读取时非法段跳过并记 warn，
+  已删除的对象在展示层保留 `#id` 而不是留白
+
+#### 页面与交互（`workflows.html` / `workflows.js`）
+- 列表列：ID / 流程名称 / 说明 / 节点链路 / 状态 / 更新时间 / 操作（详情 · 编辑 · 启用|禁用 · 删除）
+- 编辑弹窗内完成**流程信息 + 节点编排**，不跳第二个页面；节点链只有一条，分开保存会出现「流程已改、节点还是老的」这种半截状态
+- 起始 / 结束节点是**固定行**：守在首尾，不可增删移动，只允许改名称（默认「发起申请」「审批完成」）
+- 审批节点可增删、可上下移动；上移 / 下移只在审批节点区间内交换，越过起始或结束会被拦下
+- 审批对象用原生 `<select multiple>`（零依赖）；按住 Ctrl / Cmd 多选
+- **已配置但当前不在候选里的值**（账号被冻结、角色被删）会补一个「#id（已不可选）」并保持选中：
+  不补的话，用户只是打开弹窗再保存，这条审批人就被静默抹掉了，而这种丢失不会报任何错
+- 前端校验只为省掉一次注定失败的请求，服务端有同一套规则做真正的兜底
+
+#### 测试
+- `WorkflowApiTest`（15 例）：未登录全接口 401 且不动数据、节点按序落库、
+  起始/结束的审批配置被清空、重名拒绝、**节点链 5 类畸形形态**、审批节点三要素缺失、
+  「直属上级」被拒、审批人/角色不存在、**差量同步保住老节点 id**、外来节点 id 被拒、
+  详情可读文案与列表不带明细、按状态筛选、启停规则、级联删除、流程不存在
+- `AuthorityDictionaryTest` / `NavigationServiceTest` / `NavigationPageTest` 同步更新：
+  10004 改为「流程管理」并断言路由为 `/workflows`；原「审批规则置灰」的断言改用「薪酬绩效」，
+  并新增「流程管理是链接且不置灰」
+- 真实浏览器 E2E 33/33：入口可点与高亮、节点编排交互（增删移 / 审批方式切换 / 直属上级置灰 /
+  候选随方式切换而清空）、新增-详情-编辑回填-启停-重名-删除全链路、
+  **1440 / 1280 / 1120 三档均无横向溢出且操作列按钮在视口内**
+
+#### 已知缺口
+- **删除流程没有校验 `work_order` 是否引用它**：工单功能尚未实现（只有建表语句与实体，
+  没有 Mapper / Service / 页面），表里恒为空。等工单落地后必须在这里补上引用校验，
+  否则会把在途的单子指向一个已不存在的流程
+- 流程头还有一列 `template`（流程模板 JSON）本轮未启用：当前没有任何地方生成或消费它，
+  因此编辑弹窗不触碰该字段（表单范围外，不做「顺手清空」）
+
+### 12.21 分页返回结构 `PageResult` 的类型契约（重要）
+
+所有分页接口统一返回 `PageResult<T>`：`{ total, current, size, records }`，四个分页页面
+（`employees` / `users` / `announcements` / `workflows`）都消费这个结构。
+
+**`total` / `current` / `size` 是 JSON 数字，不是字符串**——这是全局 Jackson 策略的一处**有意例外**：
+
+- 全局把 `Long` / `long` 序列化成字符串，目的是防雪花 ID 在前端 JS 侧丢精度（见 §11.4 `JacksonConfig`）；
+- 分页计数恰好是原生 `long`，会被这条策略连带成字符串。此时前端 `state.current + 1` 走的是
+  **字符串拼接**：`"1" + 1 === "11"`，点一次「下一页」就去请求 `current=11`，页面显示 `11 / 2` 且列表为空。
+  而「上一页」用的是减号（`"2" - 1 === 1`），所以**只有下一页会坏**，上一页看起来是好的；
+- 计数的量级（行数、页码）离 `2^53` 差着十几个数量级，不存在精度问题，因此在 `PageResult`
+  上显式指定了 `CountAsNumber` 序列化器，把三个计数还原成数字。想要新增数字字段时**不要照抄这个注解**，
+  先确认它确实是与 ID 同量级的计数，而不是业务数据。
+
+**双保险**：前端四个分页脚本仍统一写 `Number(data.total / current / size)`。
+后端已经保证是数字，这层转换是对接口类型的兜底——两者都不该去掉，任何一侧被改回去都不会再让翻页坏掉。
+
+**测试**：`EmployeeApiTest#pageCountersAreJsonNumbers` 断言这三个字段是 `Number` 而非 `String`，
+它在这条注解加上之前是**红的**，是这条契约的守门用例。
+
+#### 排查提示
+页面出现「点下一页提示空列表 / 页码变成 11 / 2」这类现象时，先看网络面板里请求的 `current` 参数：
+若是拼接出来的畸形页码，就是报文类型问题，而不是分页 SQL 或数据问题。
 
 ## 13. 安全与认证约定
 

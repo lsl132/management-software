@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('流程管理')}"></head>
+<body>
+
+<header th:replace="~{fragments/layout :: header('workflows')}"></header>
+
+<main class="app-main">
+
+    <section class="panel">
+        <h1 class="panel__title">流程管理</h1>
+        <p class="panel__desc">
+            审批规则的定义入口。一条规则 = 流程信息 + 有序节点链，节点链固定为
+            「起始 → 若干审批 → 结束」：起始与结束节点各一个、分别守在首尾，中间按需添加审批节点。
+            停用只是不允许再发起新的审批，已经在途中的单子不受影响。
+        </p>
+
+        <div class="toolbar">
+            <input class="field__input" id="keyword" type="text" style="width: 240px"
+                   placeholder="流程名称 / 描述" autocomplete="off"/>
+            <select class="field__select" id="filterStatus">
+                <option value="">全部状态</option>
+                <option th:each="item : ${workflowStatuses}" th:value="${item.value}"
+                        th:text="${item.label}"></option>
+            </select>
+            <button type="button" class="btn btn--primary" id="btnSearch">查询</button>
+            <button type="button" class="btn" id="btnReset">重置</button>
+            <span class="toolbar__spacer"></span>
+            <button type="button" class="btn btn--primary" id="btnCreate">新增流程</button>
+        </div>
+
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>流程名称</th>
+                    <th>说明</th>
+                    <th>节点链路</th>
+                    <th>状态</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody id="flowBody">
+                <tr>
+                    <td colspan="7" class="table__empty">正在加载…</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pager">
+            <span id="pagerInfo">共 0 条</span>
+            <div class="pager__actions">
+                <label>每页
+                    <select class="field__select" id="pageSize" style="height: 32px">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="50">50</option>
+                    </select>
+                </label>
+                <button type="button" class="btn btn--sm" id="btnPrev">上一页</button>
+                <span id="pageNow">1 / 1</span>
+                <button type="button" class="btn btn--sm" id="btnNext">下一页</button>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<!-- 流程表单弹窗（流程信息 + 节点编排） -->
+<div class="modal" id="flowModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel modal__panel--wide">
+        <div class="modal__header">
+            <h2 class="modal__title" id="flowModalTitle">新增流程</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <form id="flowForm" autocomplete="off" novalidate>
+            <div class="modal__body">
+                <div class="form-error" id="flowError"></div>
+                <div class="form-grid">
+                    <label class="field" for="workflowName">
+                        <span class="field__label field__label--required">流程名称
+                            <span class="field__hint">全公司唯一，如「请假申请」</span>
+                        </span>
+                        <input class="field__input" type="text" id="workflowName" maxlength="128"/>
+                    </label>
+                    <label class="field" for="status">
+                        <span class="field__label field__label--required">状态</span>
+                        <select class="field__select" id="status">
+                            <option th:each="item : ${workflowStatuses}" th:value="${item.value}"
+                                    th:text="${item.label}"></option>
+                        </select>
+                    </label>
+                    <label class="field" for="icon">
+                        <span class="field__label">图标
+                            <span class="field__hint">图标名或图片地址，可留空</span>
+                        </span>
+                        <input class="field__input" type="text" id="icon" maxlength="255"/>
+                    </label>
+                    <label class="field" for="description">
+                        <span class="field__label">说明</span>
+                        <input class="field__input" type="text" id="description" maxlength="255"/>
+                    </label>
+                </div>
+
+                <!-- 节点编排：行由 workflows.js 渲染，起始/结束固定首尾 -->
+                <div class="node-editor">
+                    <div class="node-editor__head">
+                        <span class="node-editor__title">节点编排</span>
+                        <span class="node-editor__hint">
+                            按住 Ctrl / Cmd 可多选审批人；上移 / 下移只调整审批节点之间的先后
+                        </span>
+                        <button type="button" class="btn btn--sm btn--primary" id="btnAddNode">添加审批节点</button>
+                    </div>
+                    <div class="node-editor__list" id="nodeList"></div>
+                </div>
+            </div>
+            <div class="modal__footer">
+                <button type="button" class="btn" data-close="1">取消</button>
+                <button type="submit" class="btn btn--primary" id="btnSubmitFlow">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 流程详情弹窗（只读） -->
+<div class="modal" id="detailModal" hidden>
+    <div class="modal__mask" data-close="1"></div>
+    <div class="modal__panel modal__panel--wide">
+        <div class="modal__header">
+            <h2 class="modal__title" id="detailModalTitle">流程详情</h2>
+            <button type="button" class="modal__close" data-close="1">×</button>
+        </div>
+        <div class="modal__body">
+            <table class="info-table">
+                <tr>
+                    <th>流程名称</th>
+                    <td id="detailName">—</td>
+                </tr>
+                <tr>
+                    <th>说明</th>
+                    <td id="detailDescription">—</td>
+                </tr>
+                <tr>
+                    <th>状态</th>
+                    <td id="detailStatus">—</td>
+                </tr>
+                <tr>
+                    <th>节点链路</th>
+                    <td id="detailNodes">—</td>
+                </tr>
+                <tr>
+                    <th>创建 / 更新</th>
+                    <td id="detailTime">—</td>
+                </tr>
+            </table>
+        </div>
+        <div class="modal__footer">
+            <button type="button" class="btn" data-close="1">关闭</button>
+            <button type="button" class="btn btn--primary" id="btnDetailEdit">编辑</button>
+        </div>
+    </div>
+</div>
+
+<!--
+  审批角色选项的隐藏数据源：与用户管理页从筛选下拉缓存角色选项同一做法。
+  流程编辑弹窗里每条审批节点都要一份角色下拉，但角色数据来自服务端渲染，
+  放在这里读一次比每个节点各请求一次接口更省事。
+-->
+<select id="roleOptionSource" th:if="${roles != null}" hidden>
+    <option th:each="item : ${roles}" th:value="${item.value}" th:text="${item.label}"></option>
+</select>
+
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+
+<script th:src="@{/js/app.js}"></script>
+<script th:src="@{/js/workflows.js}"></script>
+
+</body>
+</html>

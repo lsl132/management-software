@@ -14,6 +14,10 @@
             （助记符在自己的万位区间内递增，如 10001）。角色授权按助记符引用权限，
             因此修改助记符会自动同步已授权的角色；已被角色引用、或分组下仍有功能页的权限不允许删除。
         </p>
+        <p class="panel__desc">
+            功能页的<strong>页面路由</strong>就是顶部二级导航的跳转地址（如 <code>/employees</code>）；
+            <strong>留空表示该功能页尚未实现</strong>，导航里会置灰不可点。模块分组是下拉容器，不设路由。
+        </p>
 
         <div class="toolbar">
             <input class="field__input" id="keyword" type="text" style="width: 240px"
@@ -82,6 +86,14 @@
                     <label class="field" for="authName">
                         <span class="field__label field__label--required">权限名称</span>
                         <input class="field__input" type="text" id="authName" maxlength="64"/>
+                    </label>
+                    <label class="field" for="path" id="pathField" hidden>
+                        <span class="field__label">页面路由
+                            <span class="field__hint">如 /employees，须以 / 开头</span>
+                        </span>
+                        <input class="field__input" type="text" id="path" maxlength="128"
+                               placeholder="/employees" autocomplete="off"/>
+                        <span class="field__hint">留空表示该功能页尚未实现，二级导航里置灰不可点</span>
                     </label>
                     <label class="field form-grid__item--full" for="description">
                         <span class="field__label">说明</span>

@@ -3,11 +3,18 @@
 <!--
   后台公共布局片段（fragments）：
     head(title)    -> 页面 head
-    header(active) -> 顶部导航 + 当前用户，active 取 home / employees / departments /
-                      users / roles / authorities / announcements / schedules / about
+    header(active) -> 顶部导航 + 当前用户
     footer         -> 页脚
   用法：<head th:replace="~{fragments/layout :: head('首页')}"></head>
   注意：调用带参片段必须显式传参，如 header('')，省略参数会导致渲染被静默截断。
+
+  导航分两部分：
+    1. 固定基础项 —— 欢迎页 / 我的日程 / 关于。它们是系统自身页面，不属于任何业务模块，
+       因此不占权限字典（写死在这里），随时可用；
+    2. 字典驱动项 —— 由 navMenus 渲染成两级：一级是 authority 里 type=1 的模块分组，
+       二级是其下 type=2 的功能页，可点性由 authority.path 是否为空决定。
+    active 的取值与二级项的 key（路由首段）一致，如 /employees 对应 active='employees'；
+    navMenus 由 PageController 的 @ModelAttribute 统一注入，各页面无需自己挂。
 -->
 <head th:fragment="head(title)">
     <meta charset="UTF-8"/>
@@ -27,20 +34,32 @@
             <span class="brand__text">逐锐科技 · 后台管理</span>
         </a>
         <nav class="nav">
+            <!-- 固定项：欢迎页（关于 / 我的日程 排在业务模块之后） -->
             <a class="nav__link" th:href="@{/home}"
                th:classappend="${active == 'home' ? 'is-active' : ''}">欢迎页</a>
-            <a class="nav__link" th:href="@{/employees}"
-               th:classappend="${active == 'employees' ? 'is-active' : ''}">员工管理</a>
-            <a class="nav__link" th:href="@{/departments}"
-               th:classappend="${active == 'departments' ? 'is-active' : ''}">部门管理</a>
-            <a class="nav__link" th:href="@{/users}"
-               th:classappend="${active == 'users' ? 'is-active' : ''}">用户管理</a>
-            <a class="nav__link" th:href="@{/roles}"
-               th:classappend="${active == 'roles' ? 'is-active' : ''}">角色管理</a>
-            <a class="nav__link" th:href="@{/authorities}"
-               th:classappend="${active == 'authorities' ? 'is-active' : ''}">权限管理</a>
-            <a class="nav__link" th:href="@{/announcements}"
-               th:classappend="${active == 'announcements' ? 'is-active' : ''}">公告管理</a>
+
+            <!-- 字典驱动：一级 = 模块分组，二级 = 其下功能页 -->
+            <div class="nav__item" th:each="group : ${navMenus}">
+                <button type="button" class="nav__link nav__link--group" aria-haspopup="true"
+                        th:classappend="${#lists.contains(group.keys, active)} ? 'is-active' : ''">
+                    <span class="nav__label" th:text="${group.name}">系统设置</span>
+                    <span class="nav__caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="nav__submenu">
+                    <th:block th:each="item : ${group.children}">
+                        <!-- 有路由：正常跳转，命中当前页则高亮 -->
+                        <a th:if="${item.enabled}" class="nav__submenu-link"
+                           th:href="@{${item.path}}"
+                           th:classappend="${item.key == active ? 'is-active' : ''}"
+                           th:text="${item.name}">员工管理</a>
+                        <!-- 没路由：功能页尚未实现，置灰不可点，但仍列出以体现系统规划 -->
+                        <span th:unless="${item.enabled}" class="nav__submenu-link is-off"
+                              th:title="'该功能页尚未开放'"
+                              th:text="${item.name}">审批规则</span>
+                    </th:block>
+                </div>
+            </div>
+
             <a class="nav__link" th:href="@{/schedules}"
                th:classappend="${active == 'schedules' ? 'is-active' : ''}">我的日程</a>
             <a class="nav__link" th:href="@{/about}"

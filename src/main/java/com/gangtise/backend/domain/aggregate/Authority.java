@@ -32,6 +32,10 @@ public class Authority implements Serializable {
     private String description;
     //权限类型 1 模块分组（菜单）2 功能页，见 AuthorityTypeEnum
     private Integer type;
+    //功能页路由（如 /employees），二级导航的跳转地址；为空表示该功能页尚未实现，菜单里置灰。
+    //模块分组是下拉容器，不设路由。ALWAYS 策略：表单留空即清空，不会因为 null 被跳过而永远删不掉
+    @TableField(value = "path", updateStrategy = FieldStrategy.ALWAYS)
+    private String path;
     //创建时间
     @TableField(value = "create_time", fill = FieldFill.INSERT)
     private LocalDateTime createTime;

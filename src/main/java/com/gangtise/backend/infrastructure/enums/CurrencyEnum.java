@@ -2,6 +2,8 @@ package com.gangtise.backend.infrastructure.enums;
 
 import lombok.Getter;
 
+import java.util.Arrays;
+
 @Getter
 public enum CurrencyEnum {
 
@@ -24,5 +26,27 @@ public enum CurrencyEnum {
         this.description = description;
     }
 
+    /**
+     * 码值是否受支持。
+     *
+     * <p>币种用白名单而不是格式校验：{@code currency} 列是 varchar，格式校验放得过 {@code "ABC"}，
+     * 而「支持的币种」本来就是一份封闭清单——将来加币种只改这个枚举。
+     */
+    public static boolean isSupported(String value) {
+        return value != null && Arrays.stream(values()).anyMatch(item -> item.value.equals(value.trim()));
+    }
+
+    /** 码值转中文描述，未匹配时原样返回码值。 */
+    public static String descriptionOf(String value) {
+        if (value == null) {
+            return null;
+        }
+        String code = value.trim();
+        return Arrays.stream(values())
+                .filter(item -> item.value.equals(code))
+                .map(CurrencyEnum::getDescription)
+                .findFirst()
+                .orElse(code);
+    }
 
 }

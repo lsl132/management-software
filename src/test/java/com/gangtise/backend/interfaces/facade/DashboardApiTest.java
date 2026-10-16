@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.gangtise.backend.domain.aggregate.entity.UserLoginRecord;
 import com.gangtise.backend.infrastructure.repository.mapper.UserLoginRecordMapper;
 import com.gangtise.backend.support.ApiTestSupport;
+import org.jsoup.Jsoup;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,7 +14,6 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -94,17 +94,24 @@ class DashboardApiTest extends ApiTestSupport {
     void homePageShowsPersonalBlocks() throws Exception {
         MockHttpSession session = login();
 
-        mockMvc.perform(get("/home").session(session))
+        MvcResult result = mockMvc.perform(get("/home").session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("我的登录记录")))
-                .andExpect(content().string(containsString("我的日历")))
-                .andExpect(content().string(containsString("发布的公告")))
                 .andExpect(content().string(containsString("/js/home.js")))
-                // 改版前与个人无关的统计卡片与架构介绍应已移除
-                .andExpect(content().string(not(containsString("员工总数"))))
-                .andExpect(content().string(not(containsString("系统用户"))))
-                .andExpect(content().string(not(containsString("登录安全"))))
-                .andExpect(content().string(not(containsString("分层结构"))));
+                .andReturn();
+
+        // 断言只看正文 <main>：改版前那些与个人无关的统计卡片与架构介绍都在正文里。
+        // 顶部导航现在由权限字典驱动，正文之外出现「系统用户」这类模块名是正常的，
+        // 用整页字符串判否会把正常的导航一起判掉（首次改二级菜单时就是这么误报的）。
+        String main = Jsoup.parse(result.getResponse().getContentAsString()).select("main").text();
+
+        assertTrue(main.contains("我的登录记录"), "正文应有我的登录记录：" + main);
+        assertTrue(main.contains("我的日历"), "正文应有我的日历：" + main);
+        assertTrue(main.contains("发布的公告"), "正文应有发布的公告：" + main);
+
+        assertFalse(main.contains("员工总数"), "改版前与个人无关的统计卡片应已移除：" + main);
+        assertFalse(main.contains("系统用户"), "改版前与个人无关的统计卡片应已移除：" + main);
+        assertFalse(main.contains("登录安全"), "改版前与个人无关的统计卡片应已移除：" + main);
+        assertFalse(main.contains("分层结构"), "改版前与个人无关的架构介绍应已移除：" + main);
     }
 
     @Test
