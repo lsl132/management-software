@@ -1,8 +1,8 @@
 # 项目规范文档
 
 ## 1. 项目概述
-- 项目名称：backend-management
-- 项目本地路径：`/Users/gangtise/IdeaProjects/backend-management`
+- 项目名称：management-software
+- 项目本地路径：`/Users/gangtise/IdeaProjects/management-software`
 - 项目类型：Spring Boot 工程
 - 编译工具：Maven
 - 基础框架：Spring Boot 3.5.16
@@ -19,35 +19,35 @@
 - 项目遵从领域驱动设计原则，模块内保持清晰的分层结构（application、domain、infrastructure、interfaces）
 - 接口传结构化数据时，用Jackson序列化，传递参数时使用DTO对象，避免直接传递实体对象
 - 项目需要输出日志，日志级别为INFO，日志文件按天切割，保留7天
-- 打包方式为 `jar`，产物统一命名为 `backend-management.jar`
+- 打包方式为 `jar`，产物统一命名为 `management-software.jar`
 - 密码存储：使用 **BCrypt** 散列（`spring-security-crypto`），任何位置都不得保存或回传明文密码
 - 登录传输加密：使用**国密 SM2** 非对称加密（BouncyCastle `bcprov-jdk18on`，版本 1.81 由 `bouncycastle.version` 锁定），前端 `sm-crypto` 加密、后端解密
 - 前端交互：一律使用 **ajax** 提交数据，禁止使用表单原生提交（详见第 4 节）
 
 ## 2. 分层说明及主要目录介绍
-- `com.gangtise.backend.interfaces`： 主要用于对外提供接口服务，包含 REST API、RPC 接口等，负责接收请求并调用应用层服务。
-- `com.gangtise.backend.interfaces.facade`： 主要用于对外接口，返回数据的controller类都放这里。
-- `com.gangtise.backend.interfaces.web`: 主要存放跳转页面的controller类，返回 Thymeleaf 视图名（不带 `.html` 后缀）；对外返回 JSON 的接口不要放在此包，避免与页面控制器混淆
-- `com.gangtise.backend.application`： 主要用于处理业务逻辑，包含服务类、应用服务等，负责协调领域模型和基础设施。
-- `com.gangtise.backend.application.service`： 存放应用层的service类，应用层的service负责粘合domain层服务和基础设施层工具类。
-- `com.gangtise.backend.application.event`: 主要用于处理领域事件，包含事件发布。
-- `com.gangtise.backend.application.dto`： 主要用于应用层的结构化参数传递。请求入参用普通类 + Lombok `@Data`（便于参数校验与 Jackson 反序列化）；仅供序列化返回的不可变对象可用 `record`；需要被 Thymeleaf 模板读取的对象**必须用普通类**（SpEL 不识别 record 的访问器）。
-- `com.gangtise.backend.domain`： 主要用于封装业务规则和领域模型，包含实体、值对象、聚合根等，负责维护业务状态和行为。
-- `com.gangtise.backend.domain.aggregate`： 主要用于封装领域根对象,领域根是模型的核心，业务主要围绕根进行。
-- `com.gangtise.backend.domain.aggregate.entity`： 主要用于封装领域实体类，领域实体类也是领域模型的核心，包含业务属性和行为。
-- `com.gangtise.backend.domain.service`： 主要用于封装领域服务类，领域服务类是领域模型的核心，包含业务逻辑和规则。
-- `com.gangtise.backend.infrastructure`： 主要用于提供技术实现和基础设施，包含数据库访问、缓存、消息队列等，负责与外部系统交互。
-- `com.gangtise.backend.infrastructure.repository`： 主要用于封装数据访问，Mapper 接口统一放在其子包 `infrastructure.repository.mapper` 下
-- `com.gangtise.backend.infrastructure.config`： 主要用于封装基础设施的配置类，包含数据库、缓存、消息队列、Jackson、Thymeleaf 等的配置。
-- `com.gangtise.backend.infrastructure.enums`： 主要用于封装基础设施的枚举类，包括各种预定义的状态配置等。
-- `com.gangtise.backend.infrastructure.tasks`： 主要用于封装定时任务类。
-- `com.gangtise.backend.infrastructure.utils`： 主要用于封装基础设施的工具类，包含常用的工具方法和辅助类。
-- `com.gangtise.backend.infrastructure.exception`： 主要用于封装基础设施的异常类，包含自定义异常和异常处理器。
-- `com.gangtise.backend.infrastructure.constant`： 主要用于封装基础设施的常量类，包含常用的常量和枚举类。
-- `com.gangtise.backend.infrastructure.annotation`： 主要用于封装基础设施的注解类，包含自定义注解和注解处理器。
-- `com.gangtise.backend.infrastructure.aspect`： 主要用于封装基础设施的切面类，包含自定义切面和切面处理器。
-- `com.gangtise.backend.infrastructure.interceptor`： 主要用于封装基础设施的拦截器类，包含自定义拦截器和拦截器处理器。
-- `com.gangtise.backend.infrastructure.filter`： 主要用于封装基础设施的过滤器类，包含自定义过滤器和过滤器处理器。
+- `com.management.software.interfaces`： 主要用于对外提供接口服务，包含 REST API、RPC 接口等，负责接收请求并调用应用层服务。
+- `com.management.software.interfaces.facade`： 主要用于对外接口，返回数据的controller类都放这里。
+- `com.management.software.interfaces.web`: 主要存放跳转页面的controller类，返回 Thymeleaf 视图名（不带 `.html` 后缀）；对外返回 JSON 的接口不要放在此包，避免与页面控制器混淆
+- `com.management.software.application`： 主要用于处理业务逻辑，包含服务类、应用服务等，负责协调领域模型和基础设施。
+- `com.management.software.application.service`： 存放应用层的service类，应用层的service负责粘合domain层服务和基础设施层工具类。
+- `com.management.software.application.event`: 主要用于处理领域事件，包含事件发布。
+- `com.management.software.application.dto`： 主要用于应用层的结构化参数传递。请求入参用普通类 + Lombok `@Data`（便于参数校验与 Jackson 反序列化）；仅供序列化返回的不可变对象可用 `record`；需要被 Thymeleaf 模板读取的对象**必须用普通类**（SpEL 不识别 record 的访问器）。
+- `com.management.software.domain`： 主要用于封装业务规则和领域模型，包含实体、值对象、聚合根等，负责维护业务状态和行为。
+- `com.management.software.domain.aggregate`： 主要用于封装领域根对象,领域根是模型的核心，业务主要围绕根进行。
+- `com.management.software.domain.aggregate.entity`： 主要用于封装领域实体类，领域实体类也是领域模型的核心，包含业务属性和行为。
+- `com.management.software.domain.service`： 主要用于封装领域服务类，领域服务类是领域模型的核心，包含业务逻辑和规则。
+- `com.management.software.infrastructure`： 主要用于提供技术实现和基础设施，包含数据库访问、缓存、消息队列等，负责与外部系统交互。
+- `com.management.software.infrastructure.repository`： 主要用于封装数据访问，Mapper 接口统一放在其子包 `infrastructure.repository.mapper` 下
+- `com.management.software.infrastructure.config`： 主要用于封装基础设施的配置类，包含数据库、缓存、消息队列、Jackson、Thymeleaf 等的配置。
+- `com.management.software.infrastructure.enums`： 主要用于封装基础设施的枚举类，包括各种预定义的状态配置等。
+- `com.management.software.infrastructure.tasks`： 主要用于封装定时任务类。
+- `com.management.software.infrastructure.utils`： 主要用于封装基础设施的工具类，包含常用的工具方法和辅助类。
+- `com.management.software.infrastructure.exception`： 主要用于封装基础设施的异常类，包含自定义异常和异常处理器。
+- `com.management.software.infrastructure.constant`： 主要用于封装基础设施的常量类，包含常用的常量和枚举类。
+- `com.management.software.infrastructure.annotation`： 主要用于封装基础设施的注解类，包含自定义注解和注解处理器。
+- `com.management.software.infrastructure.aspect`： 主要用于封装基础设施的切面类，包含自定义切面和切面处理器。
+- `com.management.software.infrastructure.interceptor`： 主要用于封装基础设施的拦截器类，包含自定义拦截器和拦截器处理器。
+- `com.management.software.infrastructure.filter`： 主要用于封装基础设施的过滤器类，包含自定义过滤器和过滤器处理器。
 
 
 
@@ -62,7 +62,7 @@
 - 视图层使用 Thymeleaf 服务端渲染（前后端一体化），依赖 `spring-boot-starter-thymeleaf`，不引入独立前端工程
 - 模板根目录固定为 `src/main/resources/templates`，后缀 `.html`，编码 UTF-8
 - 静态资源（CSS / JS / 图片）放在 `src/main/resources/static`，页面中统一用 `th:href="@{/css/xxx.css}"`、`th:src="@{/js/xxx.js}"` 引用，禁止写死绝对路径或外链 CDN
-- 页面控制器统一放在 `com.gangtise.backend.interfaces.web`，方法返回视图名（如 `return "index"`），由 `spring.thymeleaf.prefix` + `suffix` 定位模板文件
+- 页面控制器统一放在 `com.management.software.interfaces.web`，方法返回视图名（如 `return "index"`），由 `spring.thymeleaf.prefix` + `suffix` 定位模板文件
 - 页面控制器只负责组装视图模型，不承载业务逻辑，业务处理下沉到 `application.service`
 - 公共片段统一放在 `templates/fragments/`。当前 `fragments/layout.html` 提供：
   - `head(title)`：页面 head（meta、标题、样式表）
@@ -100,7 +100,10 @@
 | `/authorities` | `authorities.html` | 权限管理（树形列表：分组行 + 缩进功能页行；弹窗增删改查） | 需要 |
 | `/workflows` | `workflows.html` | 流程管理（审批规则：分页列表 + 弹窗内维护流程信息与节点链 + 详情 + 行内启停/删除） | 需要 |
 | `/announcements` | `announcements.html` | 公告管理（分页列表 + 弹窗增删改查 + 行内发布/下线） | 需要 |
-| `/schedules` | `schedules.html` | 我的日程（月历 + 当月列表 + 弹窗增删改查） | 需要 |
+| `/profile` | `profile.html` | 个人信息（账号信息只读 + 显示名/手机号/邮箱可改），「我的」下第一项 | 需要 |
+| `/profile/password` | `password.html` | 修改密码（SM2 加密提交，成功后强制退出并跳登录页） | 需要 |
+| `/notices` | `notices.html` | 公司公告（员工只读视角：仅「已发布」，可按标题搜索 + 详情弹窗） | 需要 |
+| `/schedules` | `schedules.html` | 我的日程（月历 + 当月列表 + 弹窗增删改查），已移入「我的」 | 需要 |
 | `/about` | `about.html` | 运行信息 | 需要 |
 | `/` | — | 重定向到 `/home` | 需要 |
 | 其他 | `error/4xx、5xx.html` | 错误页 | — |
@@ -108,7 +111,7 @@
 
 ## 5. 命名规范
 - Maven `artifactId` 使用小写和短横线风格
-- Java 包名使用反向域名风格，例如 `com.gangtise.backend`
+- Java 包名使用反向域名风格，例如 `com.management.software`
 - 文档文件名使用英文小写短横线风格，例如 `project-spec.md`
 - 配置文件、类名、方法名应保持语义清晰，避免缩写歧义
 - Thymeleaf 模板文件名使用英文小写短横线风格，例如 `user-list.html`；公共片段统一放在 `templates/fragments/` 下
@@ -304,12 +307,12 @@
 - 审计字段不在业务代码里手工赋值，交由 `MyMetaObjectHandler` 填充；数据库侧同时保留 `default current_timestamp` 兜底
 
 ### 12.4 Mapper 约定
-- Mapper 接口统一放在 `com.gangtise.backend.infrastructure.repository.mapper`，继承 `BaseMapper<T>`，无需 `@Mapper` 注解（启动类 `@MapperScan("com.gangtise.backend.infrastructure.repository")` 已覆盖）
+- Mapper 接口统一放在 `com.management.software.infrastructure.repository.mapper`，继承 `BaseMapper<T>`，无需 `@Mapper` 注解（启动类 `@MapperScan("com.management.software.infrastructure.repository")` 已覆盖）
 - 简单 CRUD 直接用 `BaseMapper`；复杂查询优先 Lambda Wrapper，确实需要才写 XML（位置 `classpath*:/mapper/**/*.xml`）
 
 ### 12.5 已知坑位（务必遵守）
 1. **更新时 `updateTime` 不生效**：mybatis-plus 的 `strictUpdateFill` 语义是「字段为 null 时才填充」，而更新场景实体通常已持有从库中查出的旧值，会导致永远填不进去；`MyMetaObjectHandler.updateFill` 必须改用 `setFieldValByName` 强制刷新。
-2. `mybatis-plus.type-aliases-package` 必须覆盖到实际实体包（当前为 `com.gangtise.backend.domain`，同时包含 `aggregate` 与 `aggregate.entity`），否则别名引用找不到类。
+2. `mybatis-plus.type-aliases-package` 必须覆盖到实际实体包（当前为 `com.management.software.domain`，同时包含 `aggregate` 与 `aggregate.entity`），否则别名引用找不到类。
 3. 全局 `logic-delete-field: deleted` 只在实体上存在同名字段时才生效；当前各实体用 `status` 表达业务状态，未启用软删除。如需启用，补 `deleted` 列并在实体加 `@TableLogic`。
 4. 主键策略全局为 `auto`，实体侧仍显式标注 `IdType.AUTO`，避免配置漂移后主键生成方式被悄悄改变。
 5. **`updateStrategy = FieldStrategy.ALWAYS` 与 NOT NULL 约束会冲突**：`Employee` 的可选字段用 ALWAYS 实现「表单未填即清空」，若列上有 `NOT NULL` 约束，更新时会直接抛约束异常；因此这些列必须是**可空**的（`gender` / `education` / `rank` 已去掉 NOT NULL 与默认值，避免用 0 与枚举有效值混淆）。同时注意：ALWAYS 意味着直接调用 Mapper 做部分更新会把未传字段置空，部分更新场景请自行补齐字段或改用 `UpdateWrapper`。
@@ -449,10 +452,16 @@
 - 状态流转校验（`AnnouncementService`）：重复发布 → 「该公告已是发布状态，无需重复发布」；下线草稿 → 「只有已发布的公告才能下线」
 - 前端交互：列表行按状态给出「发布」或「下线」按钮；新建弹窗底部是「保存草稿 / 保存并发布」两个提交按钮，编辑时只保留「保存」且**不传 `status`**，避免「只想改错别字却把草稿发出去了」
 - **正文是富文本**（2026-10-16 起）：编辑用本地内置的 Quill 2（`static/vendor/quill/`），渲染前用本地内置的 DOMPurify 清洗
-  - **三处白名单必须一致**：编辑器工具栏（`announcements.js` 的 `modules.toolbar`）、前端 `ALLOWED_TAGS`、服务端 `RichTextUtils.SAFELIST`。当前是「精简」方案，只开放加粗 / 斜体 / 下划线 / 有序·无序列表，对应标签 `p/br/strong/b/em/i/u/ol/ul/li`；要放开新格式（标题、链接等）必须三处同改，否则内容会被静默丢掉
+  - **三处白名单必须一致**：编辑器工具栏与 `formats`（`announcements.js`）、前端 `RICH_ALLOWED_TAGS` / `RICH_ALLOWED_ATTR`（`app.js`）、服务端 `RichTextUtils.SAFELIST`。要放开新格式必须三处同改，否则内容会被静默丢掉
+  - **当前是「完整经典」工具栏**（2026-10-18 起，此前为只开放四种排版的「精简」方案）：标题 1~3 级 / 加粗·斜体·下划线·删除线 / 上下标 / 文字颜色·背景色 / 对齐 / 缩进 / 有序·无序列表 / 引用 / 代码块 / 链接 / 清除格式
+    - 标签：`p br strong b em i u s sub sup h1 h2 h3 ol ul li blockquote pre code a span`
+    - 属性只放行四类：`a[href/target/rel]`、`span[style]`、块级元素 `[class]`
+    - **属性是「先放行、再按值过滤」**（`RichTextUtils.filterStyle` / `filterClass`）：`style` 只留 `color` / `background-color` / `text-align` 三条声明且值必须匹配十六进制或 `rgb()/rgba()`，`class` 只留 `ql-align-*` / `ql-indent-1~8` / `ql-syntax`。整包放行 `style`/`class` 等于把「长什么样」交给正文作者：`style` 是 XSS 经典载体，`class` 能命中本站已有样式（藏元素、把正文伪装成按钮）
+    - 链接协议与 Quill 的 `PROTOCOL_WHITELIST` 对齐（`http/https/mailto/tel/sms`）；`target=_blank` 一律强制补 `rel="noopener noreferrer"`，否则目标页能通过 `window.opener` 反向操纵本页
+    - 代码块在编辑器里带 `data-language="plain"`（Quill 加的），服务端不放行该属性 → 每次落库都会被剥掉。这不影响内容，但写断言时不能拿「编辑器输出」和「库里的值」直接做全等比较
   - 编辑器同时收窄 `formats`（不只看工具栏）：工具栏决定按钮，`formats` 才决定「粘贴进来的内容能保留多少格式」；图片/文件的拖入与粘贴在事件层直接拦掉
   - 落库前服务端**再清洗一次**（`RichTextUtils.sanitize`，jsoup `Safelist`）：前端 DOMPurify 只保护「页面自己渲染」这条路，绕过页面直接调接口能塞进 `<script>`，最终防线必须在服务端。清洗输出用 `prettyPrint(false)`，避免 jsoup 补的换行缩进被原样存库
-  - 正文长度按**纯文字**计（`RichTextUtils.toPlainText`）：上限 20000 字，排版标记不占额度；`AnnouncementSaveDTO.content` 上的 `@Size(max = 100000)` 只是防滥用粗筛
+  - 正文长度按**纯文字**计（`RichTextUtils.toPlainText`）：上限 20000 字，排版标记不占额度；`AnnouncementSaveDTO.content` 上的 `@Size(max = 400000)` 只是防滥用粗筛（**20 倍于纯文字上限**：颜色/对齐会让每个字外套一层带 `style` 的 `span`，按原先的 10 万卡会出现「内容不长却报长度超限」）
   - 清洗后没有实际文字的内容被拒（「公告内容不能为空」），防止只存了一堆空标签
   - 存库取 `getSemanticHTML()`：Quill 编辑器内部是 `<li data-list="ordered"><span class="ql-ui">…`，直接取 `innerHTML` 会把私有属性带进库
 - **编辑器资源本地内置、不走 CDN**：放 `static/vendor/**`（与 `sm2.js` 同一思路）；该目录已加入 `WebMvcConfig.EXCLUDE_PATTERNS`，与 `/css`、`/js`、`/img` 同级放行
@@ -460,7 +469,7 @@
 - **查看详情（只读）**：列表只展示标题与 40 字摘要，正文不可见。行内「详情」按钮或**直接点击标题**打开只读弹窗 `#announcementDetailModal`
   - 数据按 id 现取 `GET /api/announcements/{id}`，避免列表缓存与库内不一致
   - 弹窗内只有元信息（状态徽标 / 作者 / 发布时间 / 创建时间 / 公告 ID）+ 正文 + 附件，**无任何输入控件与提交按钮**（只读语义，不复用编辑表单）
-  - 正文按内容形态分流（`renderContent`）：含块级标签 → DOMPurify 清洗后 `innerHTML`（`.ann-detail__content` 走常规文档流，另给 `p/ul/ol/li/strong/em/u` 补样式）；不含标签 → 原样 `textContent` 并加 `.ann-detail__content--plain`，用 `white-space: pre-wrap` **保住历史纯文本公告的换行与空行**。长内容在 `max-height: 42vh` 内滚动，不撑爆弹窗
+  - 正文按内容形态分流（`renderContent`）：含块级标签 → DOMPurify 清洗后 `innerHTML`（`.ann-detail__content` 走常规文档流，另补一套只读排版样式：`p/ul/ol/li/strong/em/u` + 标题 `h1~h3`、`blockquote`、`pre/code`、`a`、`sub/sup`、`ql-align-*`、`ql-indent-*`）。**Quill 自带样式只作用于 `.ql-editor`（编辑器内）**，详情弹窗与公司公告页不在这个作用域里，不补样式的话标题会跟正文一样大、引用与代码块完全看不出区别；不含标签 → 原样 `textContent` 并加 `.ann-detail__content--plain`，用 `white-space: pre-wrap` **保住历史纯文本公告的换行与空行**。长内容在 `max-height: 42vh` 内滚动，不撑爆弹窗
   - 空值兜底：草稿的发布时间显示 `—`，无附件显示「该公告没有附件」
   - 关闭方式与编辑弹窗统一：× / 关闭按钮 / 点遮罩 / `Esc`（`bindDismiss(modal, onClose)` 两个弹窗共用）
 - **从详情弹窗直接转编辑**（2026-10-16 起）：详情弹窗 footer 是「编辑 + 关闭」，点「编辑」先 `closeDetailModal()` 再按缓存的 `state.detailRecord` 打开编辑弹窗并回填——**不再多发一次 `GET /{id}`**，因为详情数据刚取过
@@ -744,10 +753,13 @@
 | 欢迎页 `/home` | 模板写死 | 固定基础项，不属于任何业务模块 |
 | 5 个模块分组 | `navMenus`（`NavigationService`） | 一级，`<button>` 触发器 + 下拉浮层 |
 | 分组下的功能页 | 同上 | 二级；`path` 非空渲染成 `<a>`，为空渲染成置灰的 `<span>` |
-| 我的日程 `/schedules`、关于 `/about` | 模板写死 | 固定基础项，排在业务模块之后 |
+| 我的 `/profile` `/profile/password` `/notices` `/schedules` | 模板写死 | 固定一级项 + 4 个固定二级项，排在业务模块之后、关于之前 |
+| 关于 `/about` | 模板写死 | 固定基础项，排在业务模块之后 |
 
-> 固定基础项（欢迎页 / 我的日程 / 关于）**不占权限字典**：它们是系统自身页面，与「业务模块能授权给谁」无关，
+> 固定基础项（欢迎页 / 我的 / 关于）**不占权限字典**：它们是系统自身页面，与「业务模块能授权给谁」无关，
 > 写死反而更稳——否则管理员误删字典里对应条目会连退出登录之外的入口一起消失。
+> 「我的」尤其不能进字典：它装的是账号自助能力，一旦按角色配置，漏配某个角色就等于该角色的人**连自己改密码的入口都没有**。
+> 详见 §12.22。
 
 #### 装配与注入
 - `NavigationService.menus()` 读 `authorityService.listAll()` 装配（单表、二十来行，未加缓存；
@@ -757,6 +769,9 @@
   只在页面渲染时执行，不影响 REST 接口（facade 层的控制器不会带上这个模型属性）
 - `NavItemVO.key` = 路由**首段**（`/employees` → `employees`），与各页面控制器传给 `header` 片段的 `active` 对齐。
   取首段而非整串，是为了让 `/employees/detail` 这类子路由也能点亮「员工管理」这一级
+- **例外**：固定项「我的」下的 `/profile` 与 `/profile/password` 同前缀，靠首段会同时点亮两项，
+  因此这四项的 `active` 由 `PageController` 显式给语义值（`profile` / `password` / `notices` / `schedules`），
+  见 §12.22
 
 #### 「规划中」的功能页：显示但置灰
 字典里 19 个功能页中只有 7 个填了 `path`，其余 12 个还没有页面。这类菜单项：
@@ -902,6 +917,55 @@
 页面出现「点下一页提示空列表 / 页码变成 11 / 2」这类现象时，先看网络面板里请求的 `current` 参数：
 若是拼接出来的畸形页码，就是报文类型问题，而不是分页 SQL 或数据问题。
 
+### 12.22 「我的」固定导航与账号自助（个人信息 / 修改密码 / 公司公告）
+
+顶部一级「我的」是**固定项**（不进权限字典，理由见 §12.19），下挂四个二级项：
+
+| 二级项 | 路由 | `active` | 接口 |
+| --- | --- | --- | --- |
+| 个人信息 | `/profile` | `profile` | `GET/PUT /api/profile` |
+| 修改密码 | `/profile/password` | `password` | `PUT /api/profile/password` |
+| 公司公告 | `/notices` | `notices` | `GET /api/notices`、`GET /api/notices/{id}` |
+| 我的日程 | `/schedules` | `schedules` | 见 §12.12（原本是顶级项，此轮收进「我的」） |
+
+#### 一级菜单高亮不能靠路由首段
+`/profile` 与 `/profile/password` 首段相同，若沿用 §12.19 的「首段 = key」规则会**同时点亮两项**。
+因此这四项的 `active` 一律由各 `@GetMapping` 显式指定（`PageController` 里的 `VIEW_PROFILE` / `VIEW_PASSWORD` / `VIEW_NOTICES` 常量），
+模板里一级「我的」用 `or` 聚合四个值判定 `is-active`。
+`NavigationPageTest#mineItemsLightUpOneAtATime` 锁死这条：一次只允许亮一个二级项，且不误亮业务分组。
+
+#### 个人信息：三项可改，其余只读
+- 可改：`username`（显示名）、`mobile`、`email`
+- 只读：登录账号 `identifier`、角色、账号状态、创建时间、最近登录（IP 与时间取自 `user_login_record` 最新一条）
+- `ProfileSaveDTO` **刻意不含 `roleId` / `status`**：DTO 里没有的字段，前端就算手工构造请求也提不了权
+- `ProfileService.update` 必须用 `LambdaUpdateWrapper` 按列 `set`，**不能用 `updateById`**：
+  `User.mobile` / `email` / `roleId` 是 `FieldStrategy.ALWAYS`，局部更新会把没传的字段写成 NULL——用 `updateById`
+  改一次手机号就会把用户的角色清空。`ProfileApiTest#saveOnlyTouchesEditableColumns` 用 `roleId=4242` 钉住这一点
+- 手机号/邮箱留空语义是「清空」（`trimToNull`），不是「不修改」：页面上清空输入框再保存，期望就是清掉
+- 保存后除落库还要**回写会话里的显示名**（`session.setAttribute(SESSION_USER, ...)`），否则顶栏名字要等下次登录才变
+
+#### 修改密码：两段密码必须合成一个密文
+- 请求体是 `{keyId, cipher}`，`cipher` 的明文是 JSON：`{"oldPassword":"...","newPassword":"..."}`
+- **不能拆成两个 cipher**：SM2 一次一密（`CryptoService.decryptOnce` 解密即删私钥），同一个 `keyId` 只能解一次
+- 校验顺序：解出明文 → 校验原密码（`passwordEncoder.matches`）→ 校验新密码规则 → 写新散列
+- 新密码规则：8~32 位、必须同时含字母与数字、不得与原密码相同（前端即时提示 + 后端兜底）
+- 成功后 `session.invalidate()`，前端 `toast` 后跳 `/login`；**不自动用新密码登录**——改完密码重新认证一次是常规预期，
+  也避免「改密后旧会话仍然有效」这类安全隐患
+- `CryptoService` 的错误文案已从「登录凭证解析失败」改为中性的「加密凭证解析失败」，因为它现在同时服务登录与改密
+
+#### 公司公告：员工视角只读，只有「已发布」
+- `AnnouncementService.publishedPage(query)` **硬编码 `eq(status, PUBLISHED)`，忽略请求里的 `status`**：
+  「前端没传 status」不是权限边界，改个 URL 就能翻草稿；`NoticeApiTest#statusParamCannotExposeDrafts` 专门打这个
+- `publishedDetail(id)`：非已发布一律抛「公告不存在或已下线」，不给「存在但你没权限」这种可枚举信号
+- 页面只读：无新增/编辑/发布按钮，正文用 `App.renderRichContent` 渲染（与公告管理同一套白名单）
+- 公告管理与公司公告职责分离：前者是管理员视角（含草稿、可改），后者是员工视角（只读、仅已发布）
+
+#### 富文本渲染能力已上收到 `app.js`
+`RICH_ALLOWED_TAGS` / `RICH_BLOCK_TAGS` / `looksLikeRichText` / `sanitizeRich` / `renderRichContent`
+统一挂在 `window.App` 上，`announcements.js` 与 `notices.js` 共用。
+原先这套白名单写在 `announcements.js` 里，第二个消费方出现时必须上收——两份拷贝迟早发散，
+而白名单发散的直接后果是 XSS。
+
 ## 13. 安全与认证约定
 
 ### 13.1 登录链路（国密 SM2 传输加密 + BCrypt 存储）
@@ -918,6 +982,8 @@
 - 私钥：64 位十六进制（D 值左补零）
 - 密文：`C1(64B) || C3(32B) || C2(n)`，**C1 不带 `04` 前缀**；服务端解密前统一补 `04`
 - 实现：`infrastructure.utils.Sm2Utils`（BouncyCastle）、`application.service.CryptoService`（密钥下发 + 一次性解密）
+- **一次一密**：`issueKeyPair()` 下发 `keyId` + 公钥，私钥存 Redis，`decryptOnce(keyId, cipher)` 解密即删。
+  同一 `keyId` 只能解一次，因此**一个业务动作若要传多段敏感数据，必须合并成一份 JSON 一次加密**（如改密的原密码 + 新密码，见 §12.22）
 - 任一侧实现改动后必须跑 `Sm2CryptoTest`（内含 `sm-crypto` 生成的真实密文向量，可直接验证互通）
 
 ### 13.3 密码存储与管理员初始化

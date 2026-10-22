@@ -9,11 +9,12 @@
   注意：调用带参片段必须显式传参，如 header('')，省略参数会导致渲染被静默截断。
 
   导航分两部分：
-    1. 固定基础项 —— 欢迎页 / 我的日程 / 关于。它们是系统自身页面，不属于任何业务模块，
-       因此不占权限字典（写死在这里），随时可用；
+    1. 固定基础项 —— 欢迎页 / 我的（个人信息、修改密码、公司公告、我的日程）/ 关于。
+       它们是系统自身页面，不属于任何业务模块，因此不占权限字典（写死在这里），随时可用；
     2. 字典驱动项 —— 由 navMenus 渲染成两级：一级是 authority 里 type=1 的模块分组，
        二级是其下 type=2 的功能页，可点性由 authority.path 是否为空决定。
     active 的取值与二级项的 key（路由首段）一致，如 /employees 对应 active='employees'；
+    固定项没有路由派生的 key，由各页面控制器直接给语义化取值（profile / password / notices / schedules），
     navMenus 由 PageController 的 @ModelAttribute 统一注入，各页面无需自己挂。
 -->
 <head th:fragment="head(title)">
@@ -34,7 +35,7 @@
             <span class="brand__text">逐锐科技 · 后台管理</span>
         </a>
         <nav class="nav">
-            <!-- 固定项：欢迎页（关于 / 我的日程 排在业务模块之后） -->
+            <!-- 固定项：欢迎页（「我的」分组与「关于」排在业务模块之后） -->
             <a class="nav__link" th:href="@{/home}"
                th:classappend="${active == 'home' ? 'is-active' : ''}">欢迎页</a>
 
@@ -60,8 +61,30 @@
                 </div>
             </div>
 
-            <a class="nav__link" th:href="@{/schedules}"
-               th:classappend="${active == 'schedules' ? 'is-active' : ''}">我的日程</a>
+            <!-- 固定项：「我的」——当前登录人自己的四件事（个人信息 / 修改密码 / 公司公告 / 我的日程）。
+                 固定写死而不进权限字典：它们与业务模块无关，任何账号都必须有，
+                 若放进字典就得为每个角色配一遍，漏配会让用户连自己的密码都改不了 -->
+            <div class="nav__item"
+                 th:with="mineActive=${active == 'profile' or active == 'password' or active == 'notices' or active == 'schedules'}">
+                <button type="button" class="nav__link nav__link--group" aria-haspopup="true"
+                        th:classappend="${mineActive} ? 'is-active' : ''">
+                    <span class="nav__label">我的</span>
+                    <span class="nav__caret" aria-hidden="true">▾</span>
+                </button>
+                <div class="nav__submenu">
+                    <!-- 修改密码与个人信息同在 /profile 下，因此不能靠路由首段区分高亮，
+                         各自由页面控制器给 active=profile / password -->
+                    <a class="nav__submenu-link" th:href="@{/profile}"
+                       th:classappend="${active == 'profile' ? 'is-active' : ''}">个人信息</a>
+                    <a class="nav__submenu-link" th:href="@{/profile/password}"
+                       th:classappend="${active == 'password' ? 'is-active' : ''}">修改密码</a>
+                    <a class="nav__submenu-link" th:href="@{/notices}"
+                       th:classappend="${active == 'notices' ? 'is-active' : ''}">公司公告</a>
+                    <a class="nav__submenu-link" th:href="@{/schedules}"
+                       th:classappend="${active == 'schedules' ? 'is-active' : ''}">我的日程</a>
+                </div>
+            </div>
+
             <a class="nav__link" th:href="@{/about}"
                th:classappend="${active == 'about' ? 'is-active' : ''}">关于</a>
         </nav>

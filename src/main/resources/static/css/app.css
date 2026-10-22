@@ -1097,13 +1097,20 @@ textarea.field__input {
     border-bottom: none;
     border-radius: var(--radius) var(--radius) 0 0;
     background: #f8fafc;
+    /* 工具栏按钮从 4 个变成十几组：收紧内边距与组间距，让弹窗（680px）里只折成两行 */
+    padding: 6px 8px;
+}
+
+.ann-editor .ql-toolbar.ql-snow .ql-formats {
+    margin-right: 8px;
 }
 
 .ann-editor .ql-container.ql-snow {
     border: 1px solid var(--color-border);
     border-radius: 0 0 var(--radius) var(--radius);
-    /* 固定高度：编辑器在 hidden 弹窗里初始化，靠显式高度避免测量出错 */
-    height: 220px;
+    /* 固定高度：编辑器在 hidden 弹窗里初始化，靠显式高度避免测量出错。
+       工具栏换成一整排之后编辑区显小，放宽到 260px（弹窗总高仍在视口内） */
+    height: 260px;
     background: var(--color-surface);
     font-family: inherit;
     font-size: 14px;
@@ -1248,6 +1255,141 @@ button.ann-cell__title:hover {
 
 .ann-detail__content u {
     text-decoration: underline;
+}
+
+/* 「完整经典」工具栏产出的其余元素：编辑区由 Quill 自带样式负责，
+   只读详情区必须自己补一套，否则标题会跟正文一样大、引用和代码块完全看不出区别 */
+.ann-detail__content h1,
+.ann-detail__content h2,
+.ann-detail__content h3 {
+    margin: 16px 0 8px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--color-text);
+}
+
+.ann-detail__content h1 {
+    font-size: 20px;
+}
+
+.ann-detail__content h2 {
+    font-size: 17px;
+}
+
+.ann-detail__content h3 {
+    font-size: 15px;
+}
+
+.ann-detail__content h1:first-child,
+.ann-detail__content h2:first-child,
+.ann-detail__content h3:first-child {
+    margin-top: 0;
+}
+
+.ann-detail__content blockquote {
+    margin: 0 0 8px;
+    padding: 6px 0 6px 12px;
+    border-left: 3px solid var(--color-border);
+    color: var(--color-text-muted);
+}
+
+.ann-detail__content pre {
+    margin: 0 0 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: #f6f8fb;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.ann-detail__content code {
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: #f1f4f8;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+}
+
+/* 代码块里再套一层 code 时不要再叠一次底纹与内边距 */
+.ann-detail__content pre code {
+    padding: 0;
+    background: none;
+    font-size: inherit;
+}
+
+.ann-detail__content s {
+    text-decoration: line-through;
+}
+
+.ann-detail__content sub,
+.ann-detail__content sup {
+    position: relative;
+    font-size: 75%;
+    line-height: 0;
+    vertical-align: baseline;
+}
+
+.ann-detail__content sup {
+    top: -0.5em;
+}
+
+.ann-detail__content sub {
+    bottom: -0.25em;
+}
+
+.ann-detail__content a {
+    color: var(--color-primary);
+    text-decoration: underline;
+    word-break: break-all;
+}
+
+/* 对齐与缩进：Quill 落在 class 上（服务端只放行这几种类名） */
+.ann-detail__content .ql-align-center {
+    text-align: center;
+}
+
+.ann-detail__content .ql-align-right {
+    text-align: right;
+}
+
+.ann-detail__content .ql-align-justify {
+    text-align: justify;
+}
+
+.ann-detail__content .ql-indent-1 {
+    padding-left: 3em;
+}
+
+.ann-detail__content .ql-indent-2 {
+    padding-left: 6em;
+}
+
+.ann-detail__content .ql-indent-3 {
+    padding-left: 9em;
+}
+
+.ann-detail__content .ql-indent-4 {
+    padding-left: 12em;
+}
+
+.ann-detail__content .ql-indent-5 {
+    padding-left: 15em;
+}
+
+.ann-detail__content .ql-indent-6 {
+    padding-left: 18em;
+}
+
+.ann-detail__content .ql-indent-7 {
+    padding-left: 21em;
+}
+
+.ann-detail__content .ql-indent-8 {
+    padding-left: 24em;
 }
 
 .ann-detail__link {
@@ -1826,4 +1968,59 @@ button.ann-cell__title:hover {
         grid-column: auto;
         align-self: start;
     }
+}
+
+/* ------------------------------------------------ 「我的」相关页面扩展 */
+
+/* 个人信息 / 修改密码：表单收窄到一屏之内，输入框拉满整行会让人来回扫视 */
+.panel--narrow {
+    max-width: 820px;
+}
+
+/* 表单内的小节标题：与上一组字段用一条细线隔开，但视觉权重低于 .panel__title */
+.form-section {
+    margin: 26px 0 14px;
+    padding-top: 18px;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.form-section:first-of-type {
+    margin-top: 4px;
+    padding-top: 0;
+    border-top: none;
+}
+
+/* 表单动作区：按钮与输入框同一起始线，靠左排列 */
+.form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 24px;
+}
+
+/* 公司公告：标题是打开弹窗的按钮（详情没有独立 URL，不该做成链接），
+   视觉上按主色文字处理，hover 才出现下划线 */
+.notice-title {
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-primary);
+    font: inherit;
+    text-align: left;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+.notice-title:hover {
+    text-decoration: underline;
+}
+
+.notice-link {
+    color: var(--color-primary);
 }

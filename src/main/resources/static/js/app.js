@@ -118,6 +118,76 @@
             .trim();
     }
 
+    /* ---------------------------------------------- 富文本（公告正文）渲染 */
+
+    /**
+     * 富文本白名单：Quill 工具栏、前端 DOMPurify、服务端 jsoup 三处必须一致。
+     *
+     * <p>放在公共脚本里而不是各页面各存一份：这是安全边界，两份拷贝只会在某次改动时悄悄发散，
+     * 而发散的表现是「公告管理里能正常显示的加粗，在公司公告页被吃掉」这类很难查的问题。
+     *
+     * <p>对应编辑器「完整经典」工具栏：标题 / 粗斜下删 / 上下标 / 列表 / 引用 / 代码块 / 链接 / 颜色。
+     * 不含 img / iframe / video——正文不支持插媒体。
+     */
+    var RICH_ALLOWED_TAGS = [
+        'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'sub', 'sup',
+        'h1', 'h2', 'h3', 'ol', 'ul', 'li', 'blockquote', 'pre', 'code', 'a', 'span'
+    ];
+
+    /**
+     * 富文本允许的属性。
+     *
+     * <p>{@code style} 承载颜色/背景色，{@code class} 承载对齐/缩进，{@code href/target/rel} 承载链接。
+     * 值层面的过滤（只允许 color、background-color、ql-align-* 等）由服务端 {@code RichTextUtils}
+     * 在落库时完成：DOMPurify 只保证「不是 XSS」，服务端保证「只留白名单内的取值」。
+     */
+    var RICH_ALLOWED_ATTR = ['href', 'target', 'rel', 'style', 'class'];
+
+    /** 出现这些标签就按富文本渲染；否则视为历史纯文本公告，按原文保留换行。 */
+    var RICH_BLOCK_TAGS = /<(p|br|div|ul|ol|li|h[1-6]|blockquote|pre|code|strong|b|em|i|u|s|sub|sup)\b/i;
+
+    /** 内容是否富文本（含块级/排版标签）。 */
+    function looksLikeRichText(html) {
+        return RICH_BLOCK_TAGS.test(html === null || html === undefined ? '' : String(html));
+    }
+
+    /**
+     * 按白名单清洗 HTML。
+     *
+     * <p>DOMPurify 未加载时**降级为纯文本转义**（宁可丢掉排版也不放大 XSS 面）。
+     * 服务端落库前还会用 jsoup 再清洗一次，这里是渲染前的第一道防线。
+     */
+    function sanitizeRich(html) {
+        var raw = html === null || html === undefined ? '' : String(html);
+        if (!window.DOMPurify) {
+            window.console.warn('[富文本] DOMPurify 未加载，正文按纯文本渲染');
+            return escapeHtml(raw);
+        }
+        return window.DOMPurify.sanitize(raw, {ALLOWED_TAGS: RICH_ALLOWED_TAGS, ALLOWED_ATTR: RICH_ALLOWED_ATTR});
+    }
+
+    /**
+     * 把公告正文渲染进指定容器：富文本按白名单清洗后 innerHTML，纯文本用 textContent 保住换行。
+     */
+    function renderRichContent(container, content) {
+        if (!container) {
+            return;
+        }
+        var raw = content === null || content === undefined ? '' : String(content);
+        if (!raw.trim()) {
+            container.textContent = '（无正文）';
+            container.classList.remove('ann-detail__content--plain');
+            return;
+        }
+        if (RICH_BLOCK_TAGS.test(raw)) {
+            container.innerHTML = sanitizeRich(raw);
+            container.classList.remove('ann-detail__content--plain');
+        } else {
+            container.textContent = raw;
+            container.classList.add('ann-detail__content--plain');
+        }
+    }
+
     /** yyyy-MM-dd HH:mm:ss -> 原样返回；ISO 字符串做一次美化。 */
     function formatDateTime(value) {
         if (!value) {
@@ -417,6 +487,10 @@
         escapeHtml: escapeHtml,
         dash: dash,
         htmlToText: htmlToText,
+        RICH_ALLOWED_TAGS: RICH_ALLOWED_TAGS,
+        looksLikeRichText: looksLikeRichText,
+        sanitizeRich: sanitizeRich,
+        renderRichContent: renderRichContent,
         formatDateTime: formatDateTime,
         toDateInputValue: toDateInputValue,
         toCompactDateValue: toCompactDateValue,

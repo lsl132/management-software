@@ -74,7 +74,7 @@
     </appender>
 
     <!-- 业务包日志 -->
-    <logger name="com.gangtise.backend" level="INFO"/>
+    <logger name="com.management.software" level="INFO"/>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>

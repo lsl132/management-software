@@ -109,7 +109,7 @@ mybatis-plus:
   # Mapper XML 位置
   mapper-locations: classpath*:/mapper/**/*.xml
   # 领域实体包（typeAlias）：聚合根在 domain.aggregate，实体在 domain.aggregate.entity
-  type-aliases-package: com.gangtise.backend.domain
+  type-aliases-package: com.management.software.domain
   configuration:
     # 下划线转驼峰
     map-underscore-to-camel-case: true
@@ -180,7 +180,7 @@ logging:
   config: classpath:logback-spring.xml
   level:
     root: INFO
-    com.gangtise.backend: INFO
+    com.management.software: INFO
   file:
     path: ${LOG_PATH:./logs}
 

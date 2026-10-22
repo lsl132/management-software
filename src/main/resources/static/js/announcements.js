@@ -1,7 +1,7 @@
 /* ==========================================================================
    公告管理页脚本：公告增删改查 + 发布/下线，全部 ajax，无整页刷新
    约定：作者由服务端按登录用户写入；发布时间只在首次发布时确定
-   正文为富文本：编辑用 Quill（仅开放「精简」排版），存库前服务端还会用 jsoup 再清洗一遍，
+   正文为富文本：编辑用 Quill（「完整经典」工具栏），存库前服务端还会用 jsoup 再清洗一遍，
    前端渲染时用 DOMPurify 按同一份白名单清洗——三处白名单必须保持一致
    ========================================================================== */
 (function (window, document) {
@@ -16,10 +16,8 @@
     /** 正文允许的最大纯文字长度（不含排版标记），与服务端 RichTextUtils 的校验保持一致。 */
     var MAX_CONTENT_TEXT_LENGTH = 20000;
 
-    /** 富文本白名单：编辑器工具栏、前端 DOMPurify、服务端 jsoup 三处必须一致。 */
-    var ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'ol', 'ul', 'li'];
-    /** 出现这些标签就按富文本渲染；否则视为历史纯文本公告，按原文保留换行。 */
-    var RICH_BLOCK_TAGS = /<(p|br|div|ul|ol|li|h[1-6]|blockquote|strong|b|em|i|u|s)\b/i;
+    // 富文本白名单与清洗函数统一放在 app.js（App.sanitizeRich / App.renderRichContent）：
+    // 公司公告页也要渲染同一批正文，白名单存两份只会在某次改动时悄悄发散
 
     /** Quill 实例，页面初始化时创建。 */
     var quill = null;
@@ -73,10 +71,16 @@
     /* ------------------------------------------------------------ 富文本编辑器 */
 
     /**
-     * 初始化 Quill：只开放「加粗 / 斜体 / 下划线 / 有序·无序列表」四种排版。
+     * 初始化 Quill：挂「完整经典」工具栏（标题 / 粗斜下删 / 上下标 / 颜色 / 背景色 / 对齐 / 缩进 /
+     * 有序·无序列表 / 引用 / 代码块 / 链接 / 清除格式）。
      *
-     * <p>{@code formats} 与工具栏同时收窄——工具栏只决定按钮，{@code formats} 才决定
-     * 「粘贴进来的内容能保留多少格式」，两者都收窄才能保证只产出白名单内的标签。
+     * <p>{@code formats} 与工具栏同时列全——工具栏只决定按钮，{@code formats} 才决定
+     * 「粘贴进来的内容能保留多少格式」，两者都对齐才能保证只产出白名单内的标签。
+     * 漏写某个 format 的表现是：按钮点得动、粘贴保留得住，但内容在 {@code getSemanticHTML()}
+     * 里已经没了，属于最难查的一类「保存后格式消失」。
+     *
+     * <p>颜色与对齐/缩进会落到 {@code style} / {@code class} 上，服务端 {@code RichTextUtils}
+     * 有对应的取值校验，改这里时务必同步（否则保存后格式会被静默剥掉）。
      */
     function initEditor() {
         if (!el.contentEditor || !window.Quill) {
@@ -84,12 +88,24 @@
         }
         quill = new window.Quill(el.contentEditor, {
             theme: 'snow',
-            formats: ['bold', 'italic', 'underline', 'list'],
+            formats: [
+                'header', 'bold', 'italic', 'underline', 'strike', 'script',
+                'color', 'background', 'align', 'indent',
+                'list', 'blockquote', 'code-block', 'link'
+            ],
             placeholder: '公告正文…',
             modules: {
                 toolbar: [
-                    ['bold', 'italic', 'underline'],
-                    [{list: 'ordered'}, {list: 'bullet'}]
+                    [{header: [1, 2, 3, false]}],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    [{color: []}, {background: []}],
+                    [{script: 'sub'}, {script: 'super'}],
+                    [{list: 'ordered'}, {list: 'bullet'}],
+                    [{indent: '-1'}, {indent: '+1'}],
+                    [{align: []}],
+                    ['blockquote', 'code-block'],
+                    ['link'],
+                    ['clean']
                 ]
             }
         });
@@ -159,22 +175,8 @@
         if (!value.trim()) {
             return;
         }
-        quill.clipboard.dangerouslyPasteHTML(sanitizeRich(RICH_BLOCK_TAGS.test(value) ? value : plainTextToHtml(value)));
-    }
-
-    /**
-     * 按白名单清洗 HTML。
-     *
-     * <p>DOMPurify 未加载时**降级为纯文本转义**（宁可丢掉排版也不放大 XSS 面）。
-     * 服务端还会再清洗一次，这里是渲染前的第一道防线。
-     */
-    function sanitizeRich(html) {
-        var raw = html === null || html === undefined ? '' : String(html);
-        if (!window.DOMPurify) {
-            window.console.warn('[公告] DOMPurify 未加载，正文按纯文本渲染');
-            return App.escapeHtml(raw);
-        }
-        return window.DOMPurify.sanitize(raw, {ALLOWED_TAGS: ALLOWED_TAGS, ALLOWED_ATTR: []});
+        quill.clipboard.dangerouslyPasteHTML(App.sanitizeRich(
+            App.looksLikeRichText(value) ? value : plainTextToHtml(value)));
     }
 
     /* ------------------------------------------------------------ 渲染 */
@@ -356,21 +358,10 @@
      * <p>老公告的正文是纯文本（可能带换行），新公告是富文本 HTML，两者共存：
      * 含块级标签 → 清洗后 innerHTML（`.ann-detail__content` 用常规空白处理）；
      * 不含标签 → 原样 textContent 并加 `--plain`（靠 `white-space: pre-wrap` 保住换行）。
+     * 分流逻辑与公司公告页共用，实现放在 app.js。
      */
     function renderContent(content) {
-        var raw = content === null || content === undefined ? '' : String(content);
-        if (!raw.trim()) {
-            el.detailContent.textContent = '（无正文）';
-            el.detailContent.classList.remove('ann-detail__content--plain');
-            return;
-        }
-        if (RICH_BLOCK_TAGS.test(raw)) {
-            el.detailContent.innerHTML = sanitizeRich(raw);
-            el.detailContent.classList.remove('ann-detail__content--plain');
-        } else {
-            el.detailContent.textContent = raw;
-            el.detailContent.classList.add('ann-detail__content--plain');
-        }
+        App.renderRichContent(el.detailContent, content);
     }
 
     /** 打开只读详情：数据按 id 现取，保证看到的是最新内容。 */
